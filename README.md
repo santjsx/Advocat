@@ -18,12 +18,12 @@ The application is built on a **Clean Architecture** principle, separating conce
 ```mermaid
 graph TD
     UI[User Interface] --> Features[Feature Layer]
-    Features --> Store[State Management (Zustand)]
+    Features --> Store["State Management (Zustand)"]
     Features --> Services[Service Layer]
     
     subgraph Data Persistence
-    Services --> Async[AsyncStorage (JSON)]
-    Services --> FS[Expo FileSystem (Binary)]
+    Services --> Async["AsyncStorage (JSON)"]
+    Services --> FS["Expo FileSystem (Binary)"]
     end
     
     subgraph External
