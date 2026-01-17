@@ -75,19 +75,7 @@ Enterprise-grade document handling.
 
 A clean, feature-driven architecture ensures maintainability.
 
-```text
-src/
-├── components/       # Reusable UI primitives (UrgencyBadge, GradientButton)
-├── context/          # React Context providers (Toast, Theme)
-├── data/             # Static legal data definitions (IPC, BNS Sections)
-├── features/         # Domain logic & Business rules
-├── models/           # TypeScript interfaces & Type definitions
-├── navigation/       # Stack and Tab infrastructure
-├── screens/          # Feature-specific view controllers
-├── services/         # External I/O (Storage, Notifications, Backup)
-├── store/            # Global state stores (Zustand)
-└── theme/            # Design system tokens
-```
+![Project Structure](assets/structure.svg)
 
 ## Installation
 
