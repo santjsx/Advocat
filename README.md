@@ -1,72 +1,137 @@
 # ADVOCAT
+**Next-Generation Legal Practice Management System**
 
-**Professional Legal Case Management System**
+![Version](https://img.shields.io/badge/version-2.0.0-blue?style=for-the-badge&logo=none)
+![Platform](https://img.shields.io/badge/platform-iOS%20%7C%20Android-black?style=for-the-badge&logo=apple)
+![License](https://img.shields.io/badge/license-MIT-green?style=for-the-badge)
 
-## Overview
+---
 
-Advocat is a robust mobile application engineered for legal professionals to streamline case management, deadline tracking, and document organization. Built on a modern tech stack utilizing React Native and Expo, it delivers a secure, high-performance, and offline-capable environment for lawyers to manage their practice efficiently from any location.
+## Executive Summary
 
-## Features
+**Advocat** is a high-performance, offline-first mobile application designed to modernize legal practice management. Engineered for seamless operation in courtrooms and chambers without reliable internet, it provides a secure, encrypted environment for case files, deadline management, and legal research. It natively supports the new Indian legal codes (BNS, BNSS, BSA) while maintaining backward compatibility with legacy acts (IPC, CrPC, IEA).
 
-| Feature | Description |
-| :--- | :--- |
-| **Case Management** | Centralized hub for organizing client details, case statuses, and comprehensive case histories. |
-| **Deadline Tracking** | Precision scheduling system for court dates and filings with automated notification alerts. |
-| **Document Control** | Secure handling of case-related documents, evidence, and media with seamless retrieval. |
-| **Analytics Dashboard** | Interactive data visualization for tracking case loads, performance metrics, and task completion rates. |
-| **Legal Research** | Dedicated utilities for managing legal notes, references, and case research materials. |
-| **Privacy Focused** | Offline-first architecture ensures sensitive client data remains secure and accessible without internet dependency. |
+## Core Capabilities
 
-## Technology Stack
+### 1. Intelligent Case Management
+Comprehensive lifecycle tracking from **Intake** to **Appeal**.
+*   **Multi-Stage Tracking**: Granular status updates across 10+ distinct legal stages including Pleading, Discovery, and Trial.
+*   **Legal Code Integration**: Built-in support for both new (BNS, BNSS) and legacy (IPC, CrPC) legal frameworks, allowing precise section validation.
+*   **Timeline Visualization**: Automated chronological history of every case event, hearing, and document upload.
 
-The application is built using industry-standard technologies to ensure scalability, maintainability, and performance.
+### 2. Smart Deadline Engine
+A proactive scheduling system designed to prevent missed filings and court dates.
+*   **Urgency Algorithms**: Automated classification of tasks into **Critical** (<3 days), **High** (<7 days), and **Medium** priorities.
+*   **Custom Notification Logic**: Configurable alert triggers (Same Day, 24h, 72h, Custom) ensuring multi-layered reminders.
+*   **Status Synchronization**: Real-time updates on deadline completion status across the application.
 
-| Category | Technology |
-| :--- | :--- |
-| **Core Framework** | ![React Native](https://img.shields.io/badge/React_Native-20232A?style=for-the-badge&logo=react&logoColor=61DAFB) ![Expo](https://img.shields.io/badge/Expo-000020?style=for-the-badge&logo=expo&logoColor=white) |
-| **Language** | ![TypeScript](https://img.shields.io/badge/TypeScript-007ACC?style=for-the-badge&logo=typescript&logoColor=white) |
-| **State Management** | ![Zustand](https://img.shields.io/badge/Zustand-20232A?style=for-the-badge&logo=react&logoColor=white) |
-| **Navigation** | ![React Navigation](https://img.shields.io/badge/React_Navigation-20232A?style=for-the-badge&logo=react-router&logoColor=61DAFB) |
-| **Storage & Data** | ![AsyncStorage](https://img.shields.io/badge/Async_Storage-20232A?style=for-the-badge&logo=sqlite&logoColor=white) ![Expo FS](https://img.shields.io/badge/Expo_FileSystem-000020?style=for-the-badge&logo=expo&logoColor=white) |
-| **UI Components** | ![Expo Vector Icons](https://img.shields.io/badge/Vector_Icons-000020?style=for-the-badge&logo=expo&logoColor=white) ![Linear Gradient](https://img.shields.io/badge/Linear_Gradient-4630EB?style=for-the-badge&logo=css3&logoColor=white) |
-| **Utilities** | ![Day.js](https://img.shields.io/badge/Day.js-FF5F4D?style=for-the-badge&logo=javascript&logoColor=white) ![Lodash](https://img.shields.io/badge/Lodash-3492FF?style=for-the-badge&logo=lodash&logoColor=white) |
+### 3. Secure Document Vault
+Enterprise-grade document handling built on `expo-file-system`.
+*   **Offline-First Storage**: Documents are stored locally and encrypted, ensuring accessibility without network connectivity.
+*   **Version Control**: Track document history with revision support.
+*   **Intelligent Sharing**: Secure sharing capabilities using `react-native-share` with automatic MIME-type detection and safe file naming.
+*   **Backup & Restore**: Full JSON-based backup system comprising cases, documents (Base64 encoded), and setting configurations.
 
-## Installation
+### 4. Legal Research & Analytics
+*   **Performance Metrics**: Visual analytics via `react-native-chart-kit` tracking case loads and efficiency.
+*   **Citation Library**: Structured database for managing legal precedents and research notes.
 
-1.  **Clone the repository**
+---
+
+## Technical Architecture
+
+The application is built on a **Clean Architecture** principle, separating concerns into robust layers for scalability and maintainability.
+
+### Technology Stack
+
+| Component | Technology | Rationale |
+| :--- | :--- | :--- |
+| **Runtime** | **Expo (React Native)** | Cross-platform native performance with rapid iteration cycles. |
+| **Language** | **TypeScript** | Strict static typing for mission-critical reliability. |
+| **State Management** | **Zustand** | Lightweight, predictable state management without boilerplate. |
+| **Persistence** | **AsyncStorage + Expo FS** | Hybrid storage strategy for relational data and binary assets. |
+| **Navigation** | **React Navigation 7** | Deep linking support and native screen primitives. |
+| **Utilities** | **Lodash / Day.js** | Optimized data manipulation and immutable date handling. |
+
+### Project Structure
+
+```text
+src/
+├── components/       # Reusable UI primitives (UrgencyBadge, GradientButton)
+├── context/          # React Context providers (Toast, Theme)
+├── data/             # Static legal data definitions
+├── features/         # Domain logic (Urgency rules, Validation)
+├── models/           # TypeScript interfaces (Case, Document, Deadline)
+├── navigation/       # Stack and Tab navigators
+├── screens/          # Feature-specific view controllers
+├── services/         # External I/O (Storage, Notifications, Backup)
+├── store/            # Global state stores (Zustand)
+└── theme/            # Design system tokens (Colors, Typography)
+```
+
+---
+
+## Installation & Setup
+
+### Prerequisites
+*   Node.js (v18 or higher)
+*   npm or yarn
+*   Expo Go (for mobile testing)
+
+### Quick Start
+
+1.  **Clone the Repository**
     ```bash
     git clone https://github.com/santhosh-reddy/advocat.git
     cd advocat
     ```
 
-2.  **Install dependencies**
+2.  **Install Dependencies**
     ```bash
     npm install
     # or
     yarn install
     ```
 
-3.  **Start the development server**
+3.  **Launch Development Environment**
     ```bash
     npx expo start
     ```
 
-## Development
-
-**Run on Android**
-```bash
-npx expo run:android
-```
-
-**Run on iOS**
-```bash
-npx expo run:ios
-```
-
-## Developer Credits
-
-**Santhosh Reddy**
-*Lead Developer & Architect*
+4.  **Run on Device**
+    *   Scan the QR code with **Expo Go** (Android) or **Camera** (iOS).
+    *   Press `a` to run on Android Emulator.
+    *   Press `i` to run on iOS Simulator.
 
 ---
-*© 2024 Advocat. All Rights Reserved.*
+
+## Deployment
+
+### Android Build
+Generate a production-ready APK/AAB:
+```bash
+eas build --platform android --profile production
+```
+
+### iOS Build
+Generate a production IPA:
+```bash
+eas build --platform ios --profile production
+```
+
+---
+
+## Development Team
+
+**Santhosh Reddy**
+*Lead Developer & Software Architect*
+
+Designed and engineered the core architecture, including the custom offline sync engine and legal compliance modules.
+
+---
+
+## License
+
+This project is licensed under the **MIT License** - see the LICENSE file for details.
+
+© 2024 Advocat using React Native & Expo.
