@@ -11,6 +11,32 @@
 
 **Advocat** is a high-performance, offline-first mobile application designed to modernize legal practice management. Engineered for seamless operation in courtrooms and chambers without reliable internet, it provides a secure, encrypted environment for case files, deadline management, and legal research. It natively supports the new Indian legal codes (BNS, BNSS, BSA) while maintaining backward compatibility with legacy acts (IPC, CrPC, IEA).
 
+### Technical Architecture
+
+The application is built on a **Clean Architecture** principle, separating concerns into robust layers for scalability and maintainability.
+
+```mermaid
+graph TD
+    UI[User Interface] --> Features[Feature Layer]
+    Features --> Store[State Management (Zustand)]
+    Features --> Services[Service Layer]
+    
+    subgraph Data Persistence
+    Services --> Async[AsyncStorage (JSON)]
+    Services --> FS[Expo FileSystem (Binary)]
+    end
+    
+    subgraph External
+    Services --> Share[Share Intent]
+    Services --> Notif[Notifications]
+    end
+
+    style UI fill:#e1f5fe,stroke:#01579b
+    style Features fill:#fff9c4,stroke:#fbc02d
+    style Services fill:#e8f5e9,stroke:#2e7d32
+    style Store fill:#f3e5f5,stroke:#7b1fa2
+```
+
 ## Technology Stack
 
 The application uses a modern, type-safe stack designed for scalability and performance.
