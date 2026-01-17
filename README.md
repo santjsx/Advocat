@@ -97,8 +97,7 @@ A clean, feature-driven architecture ensures maintainability.
 
 ## Developer Credits
 
-**Santhosh Reddy**
-*Lead Developer & Software Architect*
+![Developer Credits](assets/credits.svg)
 
 ---
 *© 2024 Advocat. All Rights Reserved.*
