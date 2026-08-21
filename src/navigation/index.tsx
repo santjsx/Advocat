@@ -1,4 +1,5 @@
 import React from 'react';
+import { Platform } from 'react-native';
 import { NavigationContainer, DefaultTheme, DarkTheme, Theme } from '@react-navigation/native';
 import { createNativeStackNavigator } from '@react-navigation/native-stack';
 import { createBottomTabNavigator } from '@react-navigation/bottom-tabs';
@@ -30,6 +31,7 @@ const Tab = createBottomTabNavigator<MainTabParamList>();
 const MainTabs = () => {
     const { colors } = useTheme();
     const insets = useSafeAreaInsets();
+    const safeBottom = Math.max(insets.bottom, Platform.OS === 'android' ? 12 : 8);
 
     return (
         <Tab.Navigator
@@ -39,18 +41,17 @@ const MainTabs = () => {
                     backgroundColor: colors.surface,
                     borderTopColor: colors.border,
                     borderTopWidth: 1,
-                    // Dynamic height: Content (60) + Safe Area (insets.bottom) or Min Padding (16)
-                    height: 60 + (insets.bottom > 0 ? insets.bottom : 16),
-                    // Dynamic padding: Safe Area (insets.bottom) or Min Padding (16)
-                    paddingBottom: insets.bottom > 0 ? insets.bottom : 16,
-                    paddingTop: 8,
+                    // Dynamic height: Content height (56) + safe bottom insets
+                    height: 56 + safeBottom,
+                    paddingBottom: safeBottom,
+                    paddingTop: 6,
                 },
                 tabBarActiveTintColor: colors.accent,
                 tabBarInactiveTintColor: colors.textMuted,
                 tabBarLabelStyle: {
                     fontSize: 10,
-                    fontWeight: '500',
-                    marginTop: 4,
+                    fontWeight: '600',
+                    marginTop: 2,
                     letterSpacing: 0.3,
                 },
             }}

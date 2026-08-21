@@ -1,11 +1,10 @@
 import React, { useState, useMemo } from 'react';
 import {
     View, Text, StyleSheet, ScrollView, TouchableOpacity,
-    TextInput, Alert, Modal, Linking, FlatList
+    TextInput, Alert, Modal, Linking, FlatList, StatusBar
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { MaterialCommunityIcons } from '@expo/vector-icons';
-import { LinearGradient } from 'expo-linear-gradient';
 import { NativeStackScreenProps } from '@react-navigation/native-stack';
 import { RootStackParamList, MainTabParamList } from '../navigation/types';
 import { CompositeScreenProps } from '@react-navigation/native';
@@ -178,10 +177,6 @@ export const ResearchScreen: React.FC<Props> = ({ navigation }) => {
         ]);
     };
 
-    const headerGradient: [string, string] = mode === 'dark'
-        ? [colors.surface, colors.background]
-        : ['#f8f5f0', colors.background];
-
     const renderTab = (tab: TabType, label: string, icon: string) => (
         <TouchableOpacity
             key={tab}
@@ -195,10 +190,11 @@ export const ResearchScreen: React.FC<Props> = ({ navigation }) => {
 
     return (
         <SafeAreaView style={styles.container} edges={['top']}>
-            <LinearGradient colors={headerGradient} style={styles.header}>
+            <StatusBar barStyle={mode === 'dark' ? 'light-content' : 'dark-content'} backgroundColor={colors.background} />
+            <View style={styles.header}>
                 <Text style={styles.title}>Legal Research</Text>
                 <Text style={styles.subtitle}>Case laws, statutes & citations</Text>
-            </LinearGradient>
+            </View>
 
             {/* Tabs */}
             <View style={styles.tabBar}>
@@ -516,10 +512,28 @@ export const ResearchScreen: React.FC<Props> = ({ navigation }) => {
 
 const createStyles = (colors: any, spacing: any, layout: any) => StyleSheet.create({
     container: { flex: 1, backgroundColor: colors.background },
-    header: { paddingHorizontal: spacing.m, paddingTop: spacing.l, paddingBottom: spacing.m },
-    title: { color: colors.textPrimary, fontSize: 32, fontWeight: '200', letterSpacing: -1 },
-    subtitle: { color: colors.textSecondary, fontSize: 14, marginTop: 4 },
-    tabBar: { flexDirection: 'row', borderBottomWidth: 1, borderBottomColor: colors.border, backgroundColor: colors.surface },
+    header: {
+        paddingHorizontal: spacing.m,
+        paddingTop: spacing.m,
+        paddingBottom: spacing.s,
+    },
+    title: {
+        color: colors.textPrimary,
+        fontSize: 34,
+        fontWeight: '700',
+        letterSpacing: -0.5,
+    },
+    subtitle: {
+        color: colors.textSecondary,
+        fontSize: 13,
+        marginTop: 2,
+    },
+    tabBar: {
+        flexDirection: 'row',
+        borderBottomWidth: 1,
+        borderBottomColor: colors.border,
+        backgroundColor: colors.surface,
+    },
     tab: { flex: 1, alignItems: 'center', paddingVertical: spacing.m, gap: 4 },
     tabActive: { borderBottomWidth: 2, borderBottomColor: colors.accent },
     tabLabel: { color: colors.textTertiary, fontSize: 12, fontWeight: '500' },

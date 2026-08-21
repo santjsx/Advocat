@@ -20,6 +20,7 @@ import {
 } from '../services/documentStorage';
 import * as IntentLauncher from 'expo-intent-launcher';
 import * as FileSystem from 'expo-file-system/legacy';
+import * as Clipboard from 'expo-clipboard';
 import dayjs from 'dayjs';
 import 'react-native-get-random-values';
 import { v4 as uuidv4 } from 'uuid';
@@ -70,10 +71,30 @@ export const DocumentDetailScreen: React.FC<Props> = ({ navigation, route }) => 
                 // iOS - Sharing provides a native 'Quick Look' experience
                 await shareDocument(currentVersion.uri, doc.name, doc.mimeType);
             }
-        } catch (e) {
-            console.error('Open error:', e);
-            // Fallback to share
-            await shareDocument(currentVersion.uri);
+        } catch (e: any) {
+            console.warn('Intent open failed, falling back to share sheet:', e?.message || e);
+            try {
+                await shareDocument(currentVersion.uri, doc.name, doc.mimeType);
+            } catch (shareErr) {
+                Alert.alert(
+                    'No Office App Found',
+                    'Could not open Word (.docx) directly because no Word processor app (Google Docs, MS Word, WPS Office) is installed on this device. You can share or export this file to view it on your PC.',
+                    [
+                        {
+                            text: 'Share / Export',
+                            onPress: () => shareDocument(currentVersion.uri, doc.name, doc.mimeType),
+                        },
+                        {
+                            text: 'Copy File Path',
+                            onPress: () => {
+                                Clipboard.setStringAsync(currentVersion.uri);
+                                Alert.alert('Copied', 'File path copied to clipboard.');
+                            },
+                        },
+                        { text: 'OK', style: 'cancel' },
+                    ]
+                );
+            }
         }
     };
 

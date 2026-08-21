@@ -329,7 +329,7 @@ const styles = StyleSheet.create({
     },
     form: {
         padding: spacing.m,
-        paddingBottom: spacing.xxl,
+        paddingBottom: 140,
     },
     inputGroup: {
         marginBottom: spacing.l,

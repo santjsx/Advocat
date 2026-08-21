@@ -92,12 +92,32 @@ export const DashboardScreen: React.FC<Props> = ({ navigation }) => {
 
             <View style={styles.grid}>
                 <View style={styles.row}>
-                    <SummaryCard title="Urgent" count={stats.urgent} color={colors.critical} />
-                    <SummaryCard title="This Week" count={stats.upcoming} color={colors.warning} />
+                    <SummaryCard
+                        title="Urgent"
+                        count={stats.urgent}
+                        color={colors.critical}
+                        onPress={() => navigation.navigate('Deadlines')}
+                    />
+                    <SummaryCard
+                        title="This Week"
+                        count={stats.upcoming}
+                        color={colors.warning}
+                        onPress={() => navigation.navigate('Deadlines')}
+                    />
                 </View>
                 <View style={styles.row}>
-                    <SummaryCard title="Active Cases" count={stats.activeCases} color={colors.accent} />
-                    <SummaryCard title="Completed" count={stats.completedDeadlines} color={colors.safe} />
+                    <SummaryCard
+                        title="Active Cases"
+                        count={stats.activeCases}
+                        color={colors.accent}
+                        onPress={() => navigation.navigate('Cases')}
+                    />
+                    <SummaryCard
+                        title="Completed"
+                        count={stats.completedDeadlines}
+                        color={colors.safe}
+                        onPress={() => navigation.navigate('Deadlines')}
+                    />
                 </View>
             </View>
 

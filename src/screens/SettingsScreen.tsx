@@ -1,7 +1,7 @@
 import React, { useState, useEffect, useRef } from 'react';
 import {
     View, Text, StyleSheet, ScrollView, TouchableOpacity, Switch,
-    Alert, TextInput, Platform, Modal, Animated
+    Alert, TextInput, Platform, Modal, Animated, ActivityIndicator
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { useAppStore } from '../store/useAppStore';
@@ -20,6 +20,8 @@ import dayjs from 'dayjs';
 import { cancelAllNotifications } from '../services/notifications';
 import { Ionicons } from '@expo/vector-icons';
 import { exportFullBackup, importFullBackup, estimateBackupSize, formatBackupSize } from '../services/backupService';
+import { AdvocateProfile, COURT_TIERS, CourtTier, DEFAULT_ADVOCATE_PROFILE } from '../models/Pleading';
+import { testDeepSeekConnection } from '../services/aiPleadingService';
 
 type Props = CompositeScreenProps<
     BottomTabScreenProps<MainTabParamList, 'Settings'>,
@@ -31,6 +33,8 @@ export const SettingsScreen: React.FC<Props> = ({ navigation }) => {
 
     const userName = useAppStore(state => state.userName);
     const setUserName = useAppStore(state => state.setUserName);
+    const advocateProfile = useAppStore(state => state.advocateProfile) || DEFAULT_ADVOCATE_PROFILE;
+    const updateAdvocateProfile = useAppStore(state => state.updateAdvocateProfile);
     const notificationPrefs = useAppStore(state => state.notificationPrefs);
     const updateNotificationPrefs = useAppStore(state => state.updateNotificationPrefs);
     const notificationHistory = useAppStore(state => state.notificationHistory);
@@ -42,6 +46,7 @@ export const SettingsScreen: React.FC<Props> = ({ navigation }) => {
     const researchNotes = useAppStore(state => state.researchNotes);
     const searchHistory = useAppStore(state => state.searchHistory);
     const importData = useAppStore(state => state.importData);
+    const loadMockData = useAppStore(state => state.loadMockData);
 
     const [editingName, setEditingName] = useState(false);
     const [tempName, setTempName] = useState(userName);
@@ -52,6 +57,22 @@ export const SettingsScreen: React.FC<Props> = ({ navigation }) => {
     );
     const [isBackingUp, setIsBackingUp] = useState(false);
     const [isRestoring, setIsRestoring] = useState(false);
+
+    // Advocate Profile & AI State
+    const [showAdvocateModal, setShowAdvocateModal] = useState(false);
+    const [advocateName, setAdvocateName] = useState(advocateProfile.name || userName || '');
+    const [barEnrolment, setBarEnrolment] = useState(advocateProfile.barEnrolment || '');
+    const [chamberAddress, setChamberAddress] = useState(advocateProfile.chamberAddress || '');
+    const [advocatePhone, setAdvocatePhone] = useState(advocateProfile.phone || '');
+    const [advocateEmail, setAdvocateEmail] = useState(advocateProfile.email || '');
+    const [defaultCourtTier, setDefaultCourtTier] = useState<CourtTier>(advocateProfile.defaultCourtTier || 'MADRAS_HC_CHENNAI');
+
+    // DeepSeek AI State
+    const [apiKey, setApiKey] = useState(advocateProfile.deepseekApiKey || '');
+    const [showApiKey, setShowApiKey] = useState(false);
+    const [isTestingApiKey, setIsTestingApiKey] = useState(false);
+    const [apiTestStatus, setApiTestStatus] = useState<{ success: boolean; message: string; latencyMs?: number } | null>(null);
+    const [selectedModel, setSelectedModel] = useState<'deepseek-chat' | 'deepseek-reasoner'>(advocateProfile.selectedModel || 'deepseek-chat');
 
     const unreadCount = notificationHistory.filter(n => !n.read).length;
 
@@ -83,8 +104,55 @@ export const SettingsScreen: React.FC<Props> = ({ navigation }) => {
     const handleSaveName = () => {
         if (tempName.trim()) {
             setUserName(tempName.trim());
+            updateAdvocateProfile({ name: tempName.trim() });
         }
         setEditingName(false);
+    };
+
+    const handleSaveAdvocateProfile = () => {
+        updateAdvocateProfile({
+            name: advocateName.trim() || userName,
+            barEnrolment: barEnrolment.trim(),
+            chamberAddress: chamberAddress.trim(),
+            phone: advocatePhone.trim(),
+            email: advocateEmail.trim(),
+            defaultCourtTier: defaultCourtTier,
+        });
+        if (advocateName.trim()) {
+            setUserName(advocateName.trim());
+        }
+        setShowAdvocateModal(false);
+        Alert.alert("Profile Updated", "Advocate credentials and default court saved successfully.");
+    };
+
+    const handleSaveApiKey = () => {
+        updateAdvocateProfile({
+            deepseekApiKey: apiKey.trim(),
+            selectedModel: selectedModel,
+        });
+        Alert.alert("API Key Saved", "Your DeepSeek API key is saved securely on this device.");
+    };
+
+    const handleTestApiKey = async () => {
+        if (!apiKey || !apiKey.trim()) {
+            Alert.alert("API Key Missing", "Please enter a DeepSeek API key to test connection.");
+            return;
+        }
+
+        setIsTestingApiKey(true);
+        setApiTestStatus(null);
+        try {
+            const result = await testDeepSeekConnection(apiKey.trim());
+            setApiTestStatus(result);
+            if (result.success) {
+                updateAdvocateProfile({
+                    deepseekApiKey: apiKey.trim(),
+                    selectedModel: selectedModel,
+                });
+            }
+        } finally {
+            setIsTestingApiKey(false);
+        }
     };
 
     const handleExportData = async () => {
@@ -334,6 +402,413 @@ This will REPLACE your current data. Are you sure?`,
                     </View>
                 </View>
 
+                {/* Advocate Bar Credentials & TN Court Settings */}
+                <View style={styles.section}>
+                    <View style={{ flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginBottom: spacing.m }}>
+                        <View style={{ flexDirection: 'row', alignItems: 'center', gap: 8, flex: 1, marginRight: 8 }}>
+                            <View style={{
+                                width: 28,
+                                height: 28,
+                                borderRadius: 8,
+                                backgroundColor: colors.accent + '20',
+                                alignItems: 'center',
+                                justifyContent: 'center'
+                            }}>
+                                <Ionicons name="ribbon-outline" size={16} color={colors.accent} />
+                            </View>
+                            <Text style={[styles.sectionTitle, { marginBottom: 0, flex: 1 }]} numberOfLines={1}>
+                                ADVOCATE BAR PROFILE
+                            </Text>
+                        </View>
+                        <TouchableOpacity
+                            onPress={() => {
+                                setAdvocateName(advocateProfile.name || userName);
+                                setBarEnrolment(advocateProfile.barEnrolment || '');
+                                setChamberAddress(advocateProfile.chamberAddress || '');
+                                setAdvocatePhone(advocateProfile.phone || '');
+                                setAdvocateEmail(advocateProfile.email || '');
+                                setDefaultCourtTier(advocateProfile.defaultCourtTier || 'MADRAS_HC_CHENNAI');
+                                setShowAdvocateModal(true);
+                            }}
+                            style={{
+                                backgroundColor: colors.accent + '15',
+                                paddingHorizontal: 10,
+                                paddingVertical: 5,
+                                borderRadius: 12,
+                                borderWidth: 1,
+                                borderColor: colors.accent + '30',
+                                flexDirection: 'row',
+                                alignItems: 'center',
+                                gap: 4
+                            }}
+                        >
+                            <Ionicons name="create-outline" size={13} color={colors.accent} />
+                            <Text style={{ color: colors.accent, fontSize: 12, fontWeight: '600' }}>Edit</Text>
+                        </TouchableOpacity>
+                    </View>
+
+                    {/* Bar Enrolment */}
+                    <TouchableOpacity
+                        onPress={() => {
+                            setAdvocateName(advocateProfile.name || userName);
+                            setBarEnrolment(advocateProfile.barEnrolment || '');
+                            setChamberAddress(advocateProfile.chamberAddress || '');
+                            setAdvocatePhone(advocateProfile.phone || '');
+                            setAdvocateEmail(advocateProfile.email || '');
+                            setDefaultCourtTier(advocateProfile.defaultCourtTier || 'MADRAS_HC_CHENNAI');
+                            setShowAdvocateModal(true);
+                        }}
+                        style={styles.row}
+                    >
+                        <View style={[styles.labelContainer, { flex: 1, marginRight: 10 }]}>
+                            <View style={{
+                                width: 34,
+                                height: 34,
+                                borderRadius: 9,
+                                backgroundColor: colors.surfaceHighlight,
+                                alignItems: 'center',
+                                justifyContent: 'center'
+                            }}>
+                                <Ionicons name="card-outline" size={18} color={colors.accent} />
+                            </View>
+                            <View style={{ flex: 1 }}>
+                                <Text style={styles.label}>Bar Enrolment No.</Text>
+                                <Text style={styles.sublabel}>Vakalatnama & Dockets</Text>
+                            </View>
+                        </View>
+                        <View style={{
+                            backgroundColor: advocateProfile.barEnrolment ? colors.accent + '15' : colors.surfaceHighlight,
+                            borderWidth: 1,
+                            borderColor: advocateProfile.barEnrolment ? colors.accent + '35' : colors.border,
+                            paddingHorizontal: 10,
+                            paddingVertical: 5,
+                            borderRadius: 8,
+                            maxWidth: '45%',
+                        }}>
+                            <Text
+                                style={{
+                                    color: advocateProfile.barEnrolment ? colors.textPrimary : colors.textTertiary,
+                                    fontSize: 13,
+                                    fontWeight: advocateProfile.barEnrolment ? '700' : '500',
+                                    fontFamily: Platform.OS === 'ios' ? 'Menlo' : 'monospace',
+                                }}
+                                numberOfLines={1}
+                            >
+                                {advocateProfile.barEnrolment || 'Not Set'}
+                            </Text>
+                        </View>
+                    </TouchableOpacity>
+
+                    {/* Chamber Address */}
+                    <TouchableOpacity
+                        onPress={() => {
+                            setAdvocateName(advocateProfile.name || userName);
+                            setBarEnrolment(advocateProfile.barEnrolment || '');
+                            setChamberAddress(advocateProfile.chamberAddress || '');
+                            setAdvocatePhone(advocateProfile.phone || '');
+                            setAdvocateEmail(advocateProfile.email || '');
+                            setDefaultCourtTier(advocateProfile.defaultCourtTier || 'MADRAS_HC_CHENNAI');
+                            setShowAdvocateModal(true);
+                        }}
+                        style={styles.row}
+                    >
+                        <View style={[styles.labelContainer, { flex: 1, marginRight: 10 }]}>
+                            <View style={{
+                                width: 34,
+                                height: 34,
+                                borderRadius: 9,
+                                backgroundColor: colors.surfaceHighlight,
+                                alignItems: 'center',
+                                justifyContent: 'center'
+                            }}>
+                                <Ionicons name="business-outline" size={18} color={colors.accent} />
+                            </View>
+                            <View style={{ flex: 1 }}>
+                                <Text style={styles.label}>Chamber Address</Text>
+                                <Text style={styles.sublabel} numberOfLines={1}>
+                                    {advocateProfile.chamberAddress || 'High Court Buildings, Chennai'}
+                                </Text>
+                            </View>
+                        </View>
+                        <Ionicons name="chevron-forward" size={18} color={colors.textTertiary} />
+                    </TouchableOpacity>
+
+                    {/* Default Bench */}
+                    <TouchableOpacity
+                        onPress={() => {
+                            setAdvocateName(advocateProfile.name || userName);
+                            setBarEnrolment(advocateProfile.barEnrolment || '');
+                            setChamberAddress(advocateProfile.chamberAddress || '');
+                            setAdvocatePhone(advocateProfile.phone || '');
+                            setAdvocateEmail(advocateProfile.email || '');
+                            setDefaultCourtTier(advocateProfile.defaultCourtTier || 'MADRAS_HC_CHENNAI');
+                            setShowAdvocateModal(true);
+                        }}
+                        style={[styles.row, { borderBottomWidth: 0, paddingBottom: 4 }]}
+                    >
+                        <View style={[styles.labelContainer, { flex: 1, marginRight: 10 }]}>
+                            <View style={{
+                                width: 34,
+                                height: 34,
+                                borderRadius: 9,
+                                backgroundColor: colors.surfaceHighlight,
+                                alignItems: 'center',
+                                justifyContent: 'center'
+                            }}>
+                                <Ionicons name="trail-sign-outline" size={18} color={colors.accent} />
+                            </View>
+                            <View style={{ flex: 1 }}>
+                                <Text style={styles.label}>Default Court Bench</Text>
+                                <Text style={styles.sublabel} numberOfLines={1}>
+                                    {COURT_TIERS.find(t => t.value === advocateProfile.defaultCourtTier)?.shortName || 'Madras High Court (Chennai)'}
+                                </Text>
+                            </View>
+                        </View>
+                        <View style={{
+                            flexDirection: 'row',
+                            alignItems: 'center',
+                            gap: 4,
+                            backgroundColor: colors.safe + '15',
+                            paddingHorizontal: 8,
+                            paddingVertical: 4,
+                            borderRadius: 8,
+                            borderWidth: 1,
+                            borderColor: colors.safe + '30',
+                        }}>
+                            <Ionicons name="shield-checkmark" size={14} color={colors.safe} />
+                            <Text style={{ color: colors.safe, fontSize: 11, fontWeight: '700' }}>ACTIVE</Text>
+                        </View>
+                    </TouchableOpacity>
+                </View>
+
+                {/* AI Legal Engine & DeepSeek Settings */}
+                <View style={styles.section}>
+                    <View style={{ flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginBottom: spacing.xs }}>
+                        <View style={{ flexDirection: 'row', alignItems: 'center', gap: 8, flex: 1, marginRight: 8 }}>
+                            <View style={{
+                                width: 28,
+                                height: 28,
+                                borderRadius: 8,
+                                backgroundColor: colors.accent + '20',
+                                alignItems: 'center',
+                                justifyContent: 'center'
+                            }}>
+                                <Ionicons name="sparkles" size={15} color={colors.accent} />
+                            </View>
+                            <Text style={[styles.sectionTitle, { marginBottom: 0, flex: 1 }]} numberOfLines={1}>
+                                AI PLEADING ENGINE
+                            </Text>
+                        </View>
+                        <View style={{
+                            backgroundColor: colors.safe + '18',
+                            borderWidth: 1,
+                            borderColor: colors.safe + '35',
+                            paddingHorizontal: 8,
+                            paddingVertical: 3,
+                            borderRadius: 10,
+                            flexDirection: 'row',
+                            alignItems: 'center',
+                            gap: 4
+                        }}>
+                            <Ionicons name="lock-closed" size={10} color={colors.safe} />
+                            <Text style={{ color: colors.safe, fontSize: 10, fontWeight: '800', letterSpacing: 0.5 }}>LOCAL ONLY</Text>
+                        </View>
+                    </View>
+
+                    <Text style={[styles.sublabel, { marginBottom: spacing.m, lineHeight: 18 }]}>
+                        Advocat communicates directly with DeepSeek via encrypted HTTPS. Your API key and case files never touch third-party servers.
+                    </Text>
+
+                    {/* API Key Input */}
+                    <View style={{ flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginBottom: 6 }}>
+                        <Text style={[styles.label, { fontSize: 13, fontWeight: '600' }]}>DeepSeek API Key</Text>
+                        <View style={{ flexDirection: 'row', alignItems: 'center', gap: 4 }}>
+                            <View style={{
+                                width: 6,
+                                height: 6,
+                                borderRadius: 3,
+                                backgroundColor: apiKey ? colors.safe : colors.textTertiary
+                            }} />
+                            <Text style={{ color: apiKey ? colors.safe : colors.textTertiary, fontSize: 11, fontWeight: '600' }}>
+                                {apiKey ? 'Configured' : 'Offline Mode'}
+                            </Text>
+                        </View>
+                    </View>
+
+                    <View style={{
+                        flexDirection: 'row',
+                        alignItems: 'center',
+                        backgroundColor: colors.surfaceHighlight,
+                        borderRadius: 12,
+                        borderWidth: 1,
+                        borderColor: colors.border,
+                        paddingHorizontal: spacing.m,
+                        marginBottom: spacing.m,
+                        height: 48,
+                    }}>
+                        <Ionicons name="key-outline" size={18} color={colors.accent} style={{ marginRight: 10 }} />
+                        <TextInput
+                            style={{
+                                flex: 1,
+                                color: colors.textPrimary,
+                                fontSize: 14,
+                                height: 48,
+                            }}
+                            value={apiKey}
+                            onChangeText={(val) => {
+                                setApiKey(val);
+                                setApiTestStatus(null);
+                            }}
+                            placeholder="sk-..."
+                            placeholderTextColor={colors.textTertiary}
+                            secureTextEntry={!showApiKey}
+                            autoCapitalize="none"
+                            autoCorrect={false}
+                        />
+                        <TouchableOpacity
+                            onPress={() => setShowApiKey(!showApiKey)}
+                            style={{ padding: 8 }}
+                            hitSlop={{ top: 10, bottom: 10, left: 10, right: 10 }}
+                        >
+                            <Ionicons
+                                name={showApiKey ? "eye-off-outline" : "eye-outline"}
+                                size={18}
+                                color={colors.textTertiary}
+                            />
+                        </TouchableOpacity>
+                    </View>
+
+                    {/* Model Selection */}
+                    <Text style={[styles.label, { fontSize: 13, fontWeight: '600', marginBottom: 8 }]}>AI Reasoning Model</Text>
+                    <View style={{ flexDirection: 'row', gap: 10, marginBottom: spacing.m }}>
+                        <TouchableOpacity
+                            onPress={() => {
+                                setSelectedModel('deepseek-chat');
+                                updateAdvocateProfile({ selectedModel: 'deepseek-chat' });
+                            }}
+                            style={{
+                                flex: 1,
+                                paddingVertical: 12,
+                                paddingHorizontal: 12,
+                                borderRadius: 12,
+                                borderWidth: 1.5,
+                                borderColor: selectedModel === 'deepseek-chat' ? colors.accent : colors.border,
+                                backgroundColor: selectedModel === 'deepseek-chat' ? colors.accent + '15' : colors.surfaceHighlight,
+                            }}
+                        >
+                            <View style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', marginBottom: 2 }}>
+                                <Text style={{
+                                    color: selectedModel === 'deepseek-chat' ? colors.accent : colors.textPrimary,
+                                    fontWeight: '700',
+                                    fontSize: 13
+                                }}>DeepSeek-V3</Text>
+                                {selectedModel === 'deepseek-chat' && (
+                                    <Ionicons name="checkmark-circle" size={15} color={colors.accent} />
+                                )}
+                            </View>
+                            <Text style={{ color: colors.textTertiary, fontSize: 11, marginTop: 2 }}>Ultra Fast & Crisp</Text>
+                        </TouchableOpacity>
+
+                        <TouchableOpacity
+                            onPress={() => {
+                                setSelectedModel('deepseek-reasoner');
+                                updateAdvocateProfile({ selectedModel: 'deepseek-reasoner' });
+                            }}
+                            style={{
+                                flex: 1,
+                                paddingVertical: 12,
+                                paddingHorizontal: 12,
+                                borderRadius: 12,
+                                borderWidth: 1.5,
+                                borderColor: selectedModel === 'deepseek-reasoner' ? colors.accent : colors.border,
+                                backgroundColor: selectedModel === 'deepseek-reasoner' ? colors.accent + '15' : colors.surfaceHighlight,
+                            }}
+                        >
+                            <View style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', marginBottom: 2 }}>
+                                <Text style={{
+                                    color: selectedModel === 'deepseek-reasoner' ? colors.accent : colors.textPrimary,
+                                    fontWeight: '700',
+                                    fontSize: 13
+                                }}>DeepSeek-R1</Text>
+                                {selectedModel === 'deepseek-reasoner' && (
+                                    <Ionicons name="checkmark-circle" size={15} color={colors.accent} />
+                                )}
+                            </View>
+                            <Text style={{ color: colors.textTertiary, fontSize: 11, marginTop: 2 }}>Deep Legal Reasoning</Text>
+                        </TouchableOpacity>
+                    </View>
+
+                    {/* Test Connection & Save Action */}
+                    <View style={{ flexDirection: 'row', gap: 10 }}>
+                        <TouchableOpacity
+                            style={[styles.buttonOutline, {
+                                flex: 1,
+                                marginTop: 0,
+                                paddingVertical: 12,
+                                borderRadius: 12,
+                                height: 48,
+                                borderColor: colors.accent + '50',
+                                backgroundColor: colors.accent + '08'
+                            }]}
+                            onPress={handleTestApiKey}
+                            disabled={isTestingApiKey}
+                        >
+                            {isTestingApiKey ? (
+                                <ActivityIndicator size="small" color={colors.accent} />
+                            ) : (
+                                <>
+                                    <Ionicons name="flash-outline" size={16} color={colors.accent} />
+                                    <Text style={[styles.buttonTextOutline, { color: colors.accent, fontSize: 13, fontWeight: '700' }]}>Test Key</Text>
+                                </>
+                            )}
+                        </TouchableOpacity>
+
+                        <TouchableOpacity
+                            style={[styles.button, {
+                                flex: 1,
+                                marginTop: 0,
+                                paddingVertical: 12,
+                                borderRadius: 12,
+                                height: 48,
+                                backgroundColor: colors.accent
+                            }]}
+                            onPress={handleSaveApiKey}
+                        >
+                            <Ionicons name="save-outline" size={16} color="white" />
+                            <Text style={[styles.buttonText, { fontSize: 13, fontWeight: '700' }]}>Save Key</Text>
+                        </TouchableOpacity>
+                    </View>
+
+                    {/* Test Status Feedback */}
+                    {apiTestStatus && (
+                        <View style={{
+                            marginTop: spacing.m,
+                            padding: 12,
+                            borderRadius: 10,
+                            backgroundColor: apiTestStatus.success ? colors.safe + '15' : colors.critical + '15',
+                            borderWidth: 1,
+                            borderColor: apiTestStatus.success ? colors.safe + '40' : colors.critical + '40',
+                            flexDirection: 'row',
+                            alignItems: 'center',
+                            gap: 8
+                        }}>
+                            <Ionicons
+                                name={apiTestStatus.success ? "checkmark-circle" : "alert-circle"}
+                                size={18}
+                                color={apiTestStatus.success ? colors.safe : colors.critical}
+                            />
+                            <Text style={{
+                                color: apiTestStatus.success ? colors.safe : colors.critical,
+                                fontSize: 12,
+                                fontWeight: '600',
+                                flex: 1
+                            }}>
+                                {apiTestStatus.message}
+                            </Text>
+                        </View>
+                    )}
+                </View>
+
                 {/* Notification Preferences */}
                 <View style={styles.section}>
                     <Text style={styles.sectionTitle}>NOTIFICATIONS</Text>
@@ -492,6 +967,17 @@ This will REPLACE your current data. Are you sure?`,
                         <Ionicons name="cloud-upload-outline" size={20} color={colors.textPrimary} />
                         <Text style={styles.buttonTextOutline}>Import Backup</Text>
                     </TouchableOpacity>
+
+                    <TouchableOpacity
+                        style={[styles.buttonOutline, { borderColor: colors.accent + '60', backgroundColor: colors.accent + '10', marginTop: spacing.s }]}
+                        onPress={() => {
+                            loadMockData();
+                            Alert.alert('Demo Cases Loaded', 'Tamil Nadu Court mock cases and upcoming deadlines have been added to your app.');
+                        }}
+                    >
+                        <Ionicons name="folder-open-outline" size={20} color={colors.accent} />
+                        <Text style={[styles.buttonTextOutline, { color: colors.accent }]}>Load Demo Cases (Tamil Nadu)</Text>
+                    </TouchableOpacity>
                 </View>
 
                 {/* App Info */}
@@ -537,6 +1023,141 @@ This will REPLACE your current data. Are you sure?`,
                 </View>
 
             </ScrollView>
+
+            {/* Advocate Profile Edit Modal */}
+            <Modal visible={showAdvocateModal} animationType="slide" transparent>
+                <View style={styles.modalOverlay}>
+                    <View style={[styles.modalContent, { maxHeight: '90%', padding: spacing.l }]}>
+                        {/* Modal Header */}
+                        <View style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', marginBottom: 4 }}>
+                            <Text style={[styles.modalTitle, { textAlign: 'left', marginBottom: 0, fontSize: 20 }]}>
+                                Advocate Bar Profile
+                            </Text>
+                            <TouchableOpacity
+                                onPress={() => setShowAdvocateModal(false)}
+                                hitSlop={{ top: 12, bottom: 12, left: 12, right: 12 }}
+                                style={{ padding: 4 }}
+                            >
+                                <Ionicons name="close" size={22} color={colors.textSecondary} />
+                            </TouchableOpacity>
+                        </View>
+                        <Text style={[styles.modalSubtitle, { textAlign: 'left', marginBottom: spacing.m, fontSize: 13 }]}>
+                            Auto-populates Vakalatnama, Affidavits & Court Paperbooks
+                        </Text>
+
+                        {/* Scrollable Form Body */}
+                        <ScrollView
+                            showsVerticalScrollIndicator={true}
+                            style={{ flexShrink: 1 }}
+                            contentContainerStyle={{ paddingBottom: spacing.s }}
+                        >
+                            <Text style={styles.formLabel}>Advocate Full Name</Text>
+                            <TextInput
+                                style={styles.formInput}
+                                value={advocateName}
+                                onChangeText={setAdvocateName}
+                                placeholder="e.g. Adv. R. Santhosh, B.A., B.L."
+                                placeholderTextColor={colors.textTertiary}
+                            />
+
+                            <Text style={styles.formLabel}>Bar Council Enrolment No.</Text>
+                            <TextInput
+                                style={[styles.formInput, { fontFamily: Platform.OS === 'ios' ? 'Menlo' : 'monospace', letterSpacing: 0.5 }]}
+                                value={barEnrolment}
+                                onChangeText={setBarEnrolment}
+                                placeholder="e.g. MS/1234/2020"
+                                placeholderTextColor={colors.textTertiary}
+                                autoCapitalize="characters"
+                            />
+
+                            <Text style={styles.formLabel}>Chamber Address</Text>
+                            <TextInput
+                                style={[styles.formInput, { minHeight: 64, textAlignVertical: 'top' }]}
+                                value={chamberAddress}
+                                onChangeText={setChamberAddress}
+                                placeholder="e.g. No. 12, Law Chambers, High Court Buildings, Chennai - 600104"
+                                placeholderTextColor={colors.textTertiary}
+                                multiline
+                            />
+
+                            <Text style={styles.formLabel}>Mobile Number</Text>
+                            <TextInput
+                                style={styles.formInput}
+                                value={advocatePhone}
+                                onChangeText={setAdvocatePhone}
+                                placeholder="+91 98400 00000"
+                                placeholderTextColor={colors.textTertiary}
+                                keyboardType="phone-pad"
+                            />
+
+                            <Text style={styles.formLabel}>Email Address</Text>
+                            <TextInput
+                                style={styles.formInput}
+                                value={advocateEmail}
+                                onChangeText={setAdvocateEmail}
+                                placeholder="counsel@mhc.in"
+                                placeholderTextColor={colors.textTertiary}
+                                keyboardType="email-address"
+                                autoCapitalize="none"
+                            />
+
+                            <Text style={styles.formLabel}>Default Court Bench</Text>
+                            <View style={{ gap: 8, marginBottom: spacing.s }}>
+                                {[
+                                    { value: 'MADRAS_HC_CHENNAI' as CourtTier, label: 'Madras High Court (Principal Seat, Chennai)' },
+                                    { value: 'MADRAS_HC_MADURAI' as CourtTier, label: 'Madras High Court (Madurai Bench)' },
+                                    { value: 'DISTRICT_SESSIONS' as CourtTier, label: 'Principal District & Sessions Court' },
+                                    { value: 'MAGISTRATE_JM' as CourtTier, label: 'Judicial Magistrate / Subordinate Court' },
+                                ].map((item) => (
+                                    <TouchableOpacity
+                                        key={item.value}
+                                        onPress={() => setDefaultCourtTier(item.value)}
+                                        style={{
+                                            padding: 12,
+                                            borderRadius: 12,
+                                            borderWidth: 1.5,
+                                            borderColor: defaultCourtTier === item.value ? colors.accent : colors.border,
+                                            backgroundColor: defaultCourtTier === item.value ? colors.accent + '15' : 'transparent',
+                                            flexDirection: 'row',
+                                            alignItems: 'center',
+                                            justifyContent: 'space-between'
+                                        }}
+                                    >
+                                        <Text style={{
+                                            color: defaultCourtTier === item.value ? colors.accent : colors.textPrimary,
+                                            fontSize: 13,
+                                            fontWeight: defaultCourtTier === item.value ? '600' : '400',
+                                            flex: 1,
+                                            marginRight: 8,
+                                        }}>
+                                            {item.label}
+                                        </Text>
+                                        {defaultCourtTier === item.value && (
+                                            <Ionicons name="checkmark-circle" size={18} color={colors.accent} />
+                                        )}
+                                    </TouchableOpacity>
+                                ))}
+                            </View>
+                        </ScrollView>
+
+                        {/* Fixed Footer with High-Contrast Action Buttons */}
+                        <View style={[styles.modalButtons, { paddingTop: spacing.m, borderTopWidth: 1, borderTopColor: colors.border + '40' }]}>
+                            <TouchableOpacity
+                                style={styles.modalCancel}
+                                onPress={() => setShowAdvocateModal(false)}
+                            >
+                                <Text style={styles.modalCancelText}>Cancel</Text>
+                            </TouchableOpacity>
+                            <TouchableOpacity
+                                style={styles.modalSave}
+                                onPress={handleSaveAdvocateProfile}
+                            >
+                                <Text style={styles.modalSaveText}>Save Profile</Text>
+                            </TouchableOpacity>
+                        </View>
+                    </View>
+                </View>
+            </Modal>
 
             {/* Custom Days Modal - Functionality retained, style updated in createStyles */}
             <Modal visible={showCustomDaysModal} animationType="fade" transparent>
@@ -758,6 +1379,25 @@ const createStyles = (colors: any) => StyleSheet.create({
         marginBottom: spacing.l,
         textAlign: 'center',
     },
+    formLabel: {
+        color: colors.textSecondary,
+        fontSize: 12,
+        fontWeight: '700',
+        marginBottom: 6,
+        textTransform: 'uppercase',
+        letterSpacing: 0.5,
+    },
+    formInput: {
+        backgroundColor: colors.surfaceHighlight,
+        color: colors.textPrimary,
+        paddingHorizontal: 14,
+        paddingVertical: 12,
+        borderRadius: 12,
+        fontSize: 15,
+        borderWidth: 1,
+        borderColor: colors.border,
+        marginBottom: spacing.m,
+    },
     modalInput: {
         backgroundColor: colors.surfaceHighlight,
         color: colors.textPrimary,
@@ -774,27 +1414,29 @@ const createStyles = (colors: any) => StyleSheet.create({
     },
     modalCancel: {
         flex: 1,
-        padding: 16,
+        padding: 14,
         borderRadius: 12,
         borderWidth: 1,
         borderColor: colors.border,
         alignItems: 'center',
+        justifyContent: 'center',
     },
     modalCancelText: {
         color: colors.textSecondary,
-        fontSize: 16,
+        fontSize: 15,
         fontWeight: '600',
     },
     modalSave: {
         flex: 1,
-        padding: 16,
+        padding: 14,
         borderRadius: 12,
         backgroundColor: colors.accent,
         alignItems: 'center',
+        justifyContent: 'center',
     },
     modalSaveText: {
         color: 'white',
-        fontSize: 16,
+        fontSize: 15,
         fontWeight: '600',
     },
 });

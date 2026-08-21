@@ -1,6 +1,8 @@
 export type DocumentType =
+    | 'PAPERBOOK'
     | 'PETITION'
     | 'AFFIDAVIT'
+    | 'VAKALAT'
     | 'EVIDENCE'
     | 'CONTRACT'
     | 'CORRESPONDENCE'
@@ -9,8 +11,10 @@ export type DocumentType =
     | 'OTHER';
 
 export const DOCUMENT_TYPES: DocumentType[] = [
+    'PAPERBOOK',
     'PETITION',
     'AFFIDAVIT',
+    'VAKALAT',
     'EVIDENCE',
     'CONTRACT',
     'CORRESPONDENCE',

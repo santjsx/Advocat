@@ -9,6 +9,8 @@ import {
     NotificationHistoryItem,
     DEFAULT_NOTIFICATION_PREFERENCES
 } from '../models/Notification';
+import { AdvocateProfile, DEFAULT_ADVOCATE_PROFILE, PaperbookBundle } from '../models/Pleading';
+import { MOCK_CASES, MOCK_DEADLINES } from '../data/mockCases';
 import { storage } from '../services/storage';
 import { ThemeMode } from '../theme/colors';
 
@@ -20,6 +22,17 @@ interface AppState {
     // Settings
     userName: string;
     setUserName: (name: string) => void;
+
+    // Advocate Profile & AI Settings
+    advocateProfile: AdvocateProfile;
+    updateAdvocateProfile: (profile: Partial<AdvocateProfile>) => void;
+
+    // Paperbook Bundles
+    paperbookBundles: PaperbookBundle[];
+    addPaperbookBundle: (bundle: PaperbookBundle) => void;
+    updatePaperbookBundle: (bundle: PaperbookBundle) => void;
+    deletePaperbookBundle: (bundleId: string) => void;
+    getPaperbookBundlesByCase: (caseId: string) => PaperbookBundle[];
 
     // Theme
     themeMode: ThemeMode;
@@ -35,6 +48,9 @@ interface AppState {
     markNotificationRead: (notificationId: string) => void;
     markAllNotificationsRead: () => void;
     clearNotificationHistory: () => void;
+
+    // Mock Data Action
+    loadMockData: () => void;
 
     // Case Actions
     addCase: (newCase: Case) => void;
@@ -77,20 +93,31 @@ interface AppState {
     deleteResearchNote: (noteId: string) => void;
     addSearchHistory: (search: SearchHistory) => void;
     clearSearchHistory: () => void;
-    importData: (data: { cases: Case[], deadlines: Deadline[], documents?: Document[], citations?: Citation[], researchNotes?: ResearchNote[], searchHistory?: SearchHistory[] }) => void;
+    importData: (data: {
+        cases: Case[],
+        deadlines: Deadline[],
+        documents?: Document[],
+        citations?: Citation[],
+        researchNotes?: ResearchNote[],
+        searchHistory?: SearchHistory[],
+        advocateProfile?: AdvocateProfile,
+        paperbookBundles?: PaperbookBundle[]
+    }) => void;
 }
 
 export const useAppStore = create<AppState>()(
     persist(
         (set, get) => ({
-            cases: [],
-            deadlines: [],
+            cases: MOCK_CASES,
+            deadlines: MOCK_DEADLINES,
             documents: [],
             citations: [],
             researchNotes: [],
             searchHistory: [],
             userName: 'Counsel',
             themeMode: 'dark' as ThemeMode,
+            advocateProfile: DEFAULT_ADVOCATE_PROFILE,
+            paperbookBundles: [],
 
             // Notification State
             notificationPrefs: DEFAULT_NOTIFICATION_PREFERENCES,
@@ -98,6 +125,38 @@ export const useAppStore = create<AppState>()(
 
             setUserName: (name) => set({ userName: name }),
             setThemeMode: (mode) => set({ themeMode: mode }),
+
+            loadMockData: () => set((state) => {
+                const existingIds = new Set((state.cases || []).map(c => c.id));
+                const newCases = MOCK_CASES.filter(c => !existingIds.has(c.id));
+                const existingDeadlineIds = new Set((state.deadlines || []).map(d => d.id));
+                const newDeadlines = MOCK_DEADLINES.filter(d => !existingDeadlineIds.has(d.id));
+
+                return {
+                    cases: [...(state.cases || []), ...newCases],
+                    deadlines: [...(state.deadlines || []), ...newDeadlines],
+                };
+            }),
+
+            updateAdvocateProfile: (profile) => set((state) => ({
+                advocateProfile: { ...(state.advocateProfile || DEFAULT_ADVOCATE_PROFILE), ...profile, isConfigured: true }
+            })),
+
+            addPaperbookBundle: (bundle) => set((state) => ({
+                paperbookBundles: [bundle, ...(state.paperbookBundles || [])]
+            })),
+
+            updatePaperbookBundle: (bundle) => set((state) => ({
+                paperbookBundles: (state.paperbookBundles || []).map((b) => b.id === bundle.id ? bundle : b)
+            })),
+
+            deletePaperbookBundle: (bundleId) => set((state) => ({
+                paperbookBundles: (state.paperbookBundles || []).filter((b) => b.id !== bundleId)
+            })),
+
+            getPaperbookBundlesByCase: (caseId) => {
+                return (get().paperbookBundles || []).filter((b) => b.caseId === caseId);
+            },
 
             updateNotificationPrefs: (prefs) => set((state) => ({
                 notificationPrefs: { ...state.notificationPrefs, ...prefs }
@@ -376,13 +435,24 @@ export const useAppStore = create<AppState>()(
 
             clearSearchHistory: () => set({ searchHistory: [] }),
 
-            importData: (data: { cases: Case[], deadlines: Deadline[], documents?: Document[], citations?: Citation[], researchNotes?: ResearchNote[], searchHistory?: SearchHistory[] }) => set((state) => ({
+            importData: (data: {
+                cases: Case[],
+                deadlines: Deadline[],
+                documents?: Document[],
+                citations?: Citation[],
+                researchNotes?: ResearchNote[],
+                searchHistory?: SearchHistory[],
+                advocateProfile?: AdvocateProfile,
+                paperbookBundles?: PaperbookBundle[]
+            }) => set((state) => ({
                 cases: data.cases || [],
                 deadlines: data.deadlines || [],
                 documents: data.documents || [],
                 citations: data.citations || [],
                 researchNotes: data.researchNotes || [],
                 searchHistory: data.searchHistory || [],
+                advocateProfile: data.advocateProfile || state.advocateProfile || DEFAULT_ADVOCATE_PROFILE,
+                paperbookBundles: data.paperbookBundles || state.paperbookBundles || [],
             })),
         }),
         {

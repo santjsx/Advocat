@@ -260,10 +260,42 @@ export const AddCaseScreen: React.FC<Props> = ({ navigation }) => {
                     </View>
 
                     {renderInput('Court Name', court, setCourt, {
-                        placeholder: 'e.g. High Court of Delhi',
+                        placeholder: 'e.g. Madras High Court / Tiruvallur District Court',
                         required: true,
                         errorKey: 'court'
                     })}
+
+                    {/* Quick Court Suggestions */}
+                    <ScrollView horizontal showsHorizontalScrollIndicator={false} style={{ flexDirection: 'row', marginBottom: spacing.m, marginTop: -spacing.xs }}>
+                        {[
+                            'Madras High Court (Chennai)',
+                            'Madras HC (Madurai Bench)',
+                            'City Civil Court - Chennai',
+                            'District Court - Tiruvallur',
+                            'District Court - Chengalpattu',
+                            'District Court - Coimbatore',
+                            'District Court - Madurai',
+                            'District Court - Salem',
+                        ].map((cName, idx) => (
+                            <TouchableOpacity
+                                key={idx}
+                                style={{
+                                    backgroundColor: court === cName ? colors.accent + '25' : colors.surface,
+                                    borderColor: court === cName ? colors.accent : colors.border,
+                                    borderWidth: 1,
+                                    paddingHorizontal: 10,
+                                    paddingVertical: 5,
+                                    borderRadius: 8,
+                                    marginRight: 6,
+                                }}
+                                onPress={() => setCourt(cName)}
+                            >
+                                <Text style={{ fontSize: 11, color: court === cName ? colors.accent : colors.textSecondary, fontWeight: '600' }}>
+                                    {cName}
+                                </Text>
+                            </TouchableOpacity>
+                        ))}
+                    </ScrollView>
 
                     {/* Client Info Section */}
                     <Text style={styles.sectionTitle}>CLIENT INFORMATION</Text>
@@ -492,7 +524,7 @@ const createStyles = (colors: any, spacing: any, layout: any) => StyleSheet.crea
     headerButtonText: { fontSize: 14, fontWeight: '600' },
     cancelButtonText: { color: colors.textSecondary },
     saveButtonText: { color: colors.background === '#0A192F' ? '#FFFFFF' : '#FFFFFF' }, // Always white text on accent
-    form: { padding: spacing.m, paddingBottom: 100 },
+    form: { padding: spacing.m, paddingBottom: 140 },
     sectionTitle: { color: colors.accent, fontSize: 12, fontWeight: '700', letterSpacing: 1, marginTop: spacing.l, marginBottom: spacing.m },
     inputGroup: { marginBottom: spacing.l },
     label: { color: colors.textSecondary, fontSize: 12, fontWeight: '600', letterSpacing: 0.5, marginBottom: spacing.s },

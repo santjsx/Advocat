@@ -12,6 +12,7 @@ import { CompositeScreenProps } from '@react-navigation/native';
 import { BottomTabScreenProps } from '@react-navigation/bottom-tabs';
 import dayjs from 'dayjs';
 import { Case, CaseStatus } from '../models/Case';
+import { ECourtsSearchModal } from '../components/ECourtsSearchModal';
 
 type Props = CompositeScreenProps<
     BottomTabScreenProps<MainTabParamList, 'Cases'>,
@@ -31,10 +32,12 @@ export const CaseListScreen: React.FC<Props> = ({ navigation }) => {
 
     const cases = useAppStore(state => state.cases);
     const deadlines = useAppStore(state => state.deadlines);
+    const loadMockData = useAppStore(state => state.loadMockData);
 
     const [search, setSearch] = useState('');
     const [sortBy, setSortBy] = useState<SortOption>('deadline');
     const [showSortModal, setShowSortModal] = useState(false);
+    const [showECourtsModal, setShowECourtsModal] = useState(false);
     const [filterStatus, setFilterStatus] = useState<CaseStatus | 'ALL'>('ALL');
 
     const filteredCases = useMemo(() => {
@@ -139,7 +142,7 @@ export const CaseListScreen: React.FC<Props> = ({ navigation }) => {
                     </View>
 
                     {/* Main Title */}
-                    <Text style={styles.caseName} numberOfLines={2}>{item.name}</Text>
+                    <Text style={styles.caseName} numberOfLines={3}>{item.name}</Text>
 
                     {/* Client Info */}
                     <View style={styles.clientRow}>
@@ -157,12 +160,18 @@ export const CaseListScreen: React.FC<Props> = ({ navigation }) => {
                                 <MaterialCommunityIcons name="check-circle-outline" size={14} color={colors.textTertiary} />
                                 <Text style={styles.closedText}>CASE CLOSED</Text>
                             </View>
+                            <View style={styles.viewBadge}>
+                                <Text style={styles.viewBadgeText}>VIEW</Text>
+                                <MaterialCommunityIcons name="chevron-right" size={14} color={colors.accent} />
+                            </View>
                         </View>
                     ) : (
                         <View style={styles.cardFooter}>
                             <View style={styles.footerItem}>
                                 <Text style={styles.footerLabel}>Stage</Text>
-                                <Text style={[styles.stageText, { color: colors.accent }]}>{stageLabel}</Text>
+                                <View style={[styles.stageBadge, { backgroundColor: colors.accent + '15', borderColor: colors.accent + '30' }]}>
+                                    <Text style={[styles.stageText, { color: colors.accent }]}>{stageLabel}</Text>
+                                </View>
                             </View>
 
                             <View style={styles.footerItemRight}>
@@ -177,6 +186,11 @@ export const CaseListScreen: React.FC<Props> = ({ navigation }) => {
                                 ) : (
                                     <Text style={styles.noDeadline}>None</Text>
                                 )}
+                            </View>
+
+                            <View style={styles.viewBadge}>
+                                <Text style={styles.viewBadgeText}>VIEW</Text>
+                                <MaterialCommunityIcons name="chevron-right" size={14} color={colors.accent} />
                             </View>
                         </View>
                     )}
@@ -194,7 +208,17 @@ export const CaseListScreen: React.FC<Props> = ({ navigation }) => {
     return (
         <SafeAreaView style={styles.container} edges={['top']}>
             <View style={styles.header}>
-                <Text style={styles.title}>Cases</Text>
+                <View style={styles.headerTopRow}>
+                    <Text style={styles.title}>Cases</Text>
+                    <TouchableOpacity
+                        style={styles.eCourtsHeaderBtn}
+                        onPress={() => setShowECourtsModal(true)}
+                        activeOpacity={0.8}
+                    >
+                        <MaterialCommunityIcons name="scale-balance" size={16} color={colors.accent} />
+                        <Text style={styles.eCourtsHeaderBtnText}>eCourts Sync</Text>
+                    </TouchableOpacity>
+                </View>
 
                 <TextInput
                     style={styles.searchInput}
@@ -231,9 +255,47 @@ export const CaseListScreen: React.FC<Props> = ({ navigation }) => {
                 renderItem={renderItem}
                 contentContainerStyle={styles.list}
                 ListEmptyComponent={
-                    <Text style={styles.emptyText}>
-                        {search ? 'No cases match your search.' : 'No cases yet. Tap + to add one.'}
-                    </Text>
+                    <View style={{ alignItems: 'center', paddingVertical: 40, paddingHorizontal: 20 }}>
+                        <MaterialCommunityIcons name="briefcase-outline" size={48} color={colors.textTertiary} style={{ marginBottom: 12 }} />
+                        <Text style={[styles.emptyText, { marginBottom: 16 }]}>
+                            {search ? 'No cases match your search.' : 'No active cases in your dashboard.'}
+                        </Text>
+                        {!search && (
+                            <View style={{ gap: 10, alignItems: 'center' }}>
+                                <TouchableOpacity
+                                    style={[
+                                        styles.emptyActionBtn,
+                                        {
+                                            backgroundColor: colors.safe + '15',
+                                            borderColor: colors.safe + '40',
+                                        },
+                                    ]}
+                                    onPress={() => setShowECourtsModal(true)}
+                                >
+                                    <MaterialCommunityIcons name="scale-balance" size={18} color={colors.safe} />
+                                    <Text style={[styles.emptyActionBtnText, { color: colors.safe }]}>
+                                        Import from eCourts India
+                                    </Text>
+                                </TouchableOpacity>
+
+                                <TouchableOpacity
+                                    style={[
+                                        styles.emptyActionBtn,
+                                        {
+                                            backgroundColor: colors.accent + '15',
+                                            borderColor: colors.accent + '40',
+                                        },
+                                    ]}
+                                    onPress={() => loadMockData()}
+                                >
+                                    <MaterialCommunityIcons name="folder-open-outline" size={18} color={colors.accent} />
+                                    <Text style={styles.emptyActionBtnText}>
+                                        Load Sample TN Court Cases
+                                    </Text>
+                                </TouchableOpacity>
+                            </View>
+                        )}
+                    </View>
                 }
                 removeClippedSubviews={true}
                 maxToRenderPerBatch={10}
@@ -278,6 +340,15 @@ export const CaseListScreen: React.FC<Props> = ({ navigation }) => {
                     </View>
                 </TouchableOpacity>
             </Modal>
+
+            {/* eCourts Search & Live Import Modal */}
+            <ECourtsSearchModal
+                visible={showECourtsModal}
+                onClose={() => setShowECourtsModal(false)}
+                onCaseImported={(caseId) => {
+                    navigation.navigate('CaseDetail', { caseId });
+                }}
+            />
         </SafeAreaView>
     );
 };
@@ -291,12 +362,47 @@ const createStyles = (colors: any, spacing: any, layout: any) => StyleSheet.crea
         padding: spacing.m,
         paddingBottom: spacing.s,
     },
+    headerTopRow: {
+        flexDirection: 'row',
+        alignItems: 'center',
+        justifyContent: 'space-between',
+        marginBottom: spacing.m,
+    },
     title: {
         color: colors.textPrimary,
-        fontSize: 38,
-        fontWeight: '200',
-        letterSpacing: -1,
-        marginBottom: spacing.m,
+        fontSize: 34,
+        fontWeight: '700',
+        letterSpacing: -0.5,
+    },
+    eCourtsHeaderBtn: {
+        flexDirection: 'row',
+        alignItems: 'center',
+        gap: 6,
+        backgroundColor: colors.accent + '15',
+        borderColor: colors.accent + '40',
+        borderWidth: 1,
+        paddingHorizontal: 12,
+        paddingVertical: 7,
+        borderRadius: 10,
+    },
+    eCourtsHeaderBtnText: {
+        color: colors.accent,
+        fontSize: 12,
+        fontWeight: '700',
+    },
+    emptyActionBtn: {
+        borderWidth: 1,
+        paddingHorizontal: 16,
+        paddingVertical: 10,
+        borderRadius: 12,
+        flexDirection: 'row',
+        alignItems: 'center',
+        gap: 8,
+    },
+    emptyActionBtnText: {
+        color: colors.accent,
+        fontWeight: '700',
+        fontSize: 13,
     },
     searchInput: {
         backgroundColor: colors.surface,
@@ -343,7 +449,7 @@ const createStyles = (colors: any, spacing: any, layout: any) => StyleSheet.crea
     },
     list: {
         padding: spacing.m,
-        paddingBottom: 120, // Increased to ensure FAB never covers the last item
+        paddingBottom: 140, // Increased to ensure FAB never covers the last item
     },
     card: {
         backgroundColor: colors.surface,
@@ -453,32 +559,59 @@ const createStyles = (colors: any, spacing: any, layout: any) => StyleSheet.crea
         fontWeight: 'bold',
         textTransform: 'uppercase',
     },
+    stageBadge: {
+        paddingHorizontal: 8,
+        paddingVertical: 3,
+        borderRadius: 6,
+        borderWidth: 1,
+    },
     stageText: {
-        fontSize: 13,
-        fontWeight: '600',
+        fontSize: 12,
+        fontWeight: '700',
         textTransform: 'capitalize',
     },
     deadlineContainer: {
         flexDirection: 'row',
         alignItems: 'center',
-        backgroundColor: colors.warning + '15',
-        paddingHorizontal: 6,
-        paddingVertical: 2,
-        borderRadius: 4,
+        backgroundColor: colors.warning + '18',
+        borderColor: colors.warning + '35',
+        borderWidth: 1,
+        paddingHorizontal: 7,
+        paddingVertical: 3,
+        borderRadius: 6,
     },
     deadlineText: {
         color: colors.warning,
         fontSize: 12,
-        fontWeight: '600',
+        fontWeight: '700',
     },
     noDeadline: {
         color: colors.textTertiary,
         fontSize: 12,
         fontStyle: 'italic',
     },
-    closedFooter: {
+    viewBadge: {
+        flexDirection: 'row',
         alignItems: 'center',
-        justifyContent: 'center',
+        backgroundColor: colors.accent + '12',
+        borderColor: colors.accent + '30',
+        borderWidth: 1,
+        paddingHorizontal: 8,
+        paddingVertical: 5,
+        borderRadius: 12,
+        gap: 2,
+        marginLeft: 8,
+    },
+    viewBadgeText: {
+        color: colors.accent,
+        fontSize: 10,
+        fontWeight: '700',
+        letterSpacing: 0.5,
+    },
+    closedFooter: {
+        flexDirection: 'row',
+        alignItems: 'center',
+        justifyContent: 'space-between',
         paddingTop: 8,
     },
     closedBadge: {
