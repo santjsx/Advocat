@@ -17,7 +17,6 @@ export interface ParsedECourtsTextResult {
 const parseIndianCourtDate = (dateStr?: string): string | undefined => {
     if (!dateStr || !dateStr.trim()) return undefined;
 
-    // Clean ordinal suffixes: 4th -> 4, 22nd -> 22, 1st -> 1, 3rd -> 3
     const cleaned = dateStr
         .trim()
         .replace(/(\d+)(st|nd|rd|th)/gi, '$1')
@@ -42,7 +41,6 @@ const parseIndianCourtDate = (dateStr?: string): string | undefined => {
         }
     }
 
-    // Try standard fallback
     const fallback = dayjs(cleaned);
     if (fallback.isValid() && fallback.year() >= 2000 && fallback.year() <= 2040) {
         return fallback.format('YYYY-MM-DD');
@@ -83,7 +81,7 @@ export const parseECourtsText = (rawText: string): ParsedECourtsTextResult => {
     if (!rawText || !rawText.trim()) {
         return {
             success: false,
-            message: 'No text provided to parse.',
+            message: 'Invalid Screenshot: No readable text found in image.',
             rawText,
         };
     }
@@ -104,7 +102,7 @@ export const parseECourtsText = (rawText: string): ParsedECourtsTextResult => {
 
     // 2. Extract Case Type and Case Number
     let caseNumber = '';
-    let caseTypeName = 'Criminal / Civil Petition';
+    let caseTypeName = '';
 
     const regMatch = text.match(/(?:Registration\s*Number\s*[:\-\s]?\s*)([A-Za-z\.\s]+?)(?:No\.?|\/|\s)\s*([0-9]+)\s*(?:\/|\s*of\s*|\s*-\s*)\s*(20[12][0-9])/i);
     const filingMatch = text.match(/(?:Filing\s*Number\s*[:\-\s]?\s*)([A-Za-z\.\s]+?)(?:No\.?|\/|\s)\s*([0-9]+)\s*(?:\/|\s*of\s*|\s*-\s*)\s*(20[12][0-9])/i);
@@ -121,7 +119,6 @@ export const parseECourtsText = (rawText: string): ParsedECourtsTextResult => {
             caseNumber = `${genMatch[1].trim()} No. ${genMatch[2].trim()} / ${genMatch[3].trim()}`;
             caseTypeName = genMatch[1].trim();
         } else {
-            // Check standard short formats e.g. Crl.O.P. 245/2024, CRLMP/833/2026, WP/1829/2026
             const shortMatch = text.match(/\b(Crl\.O\.P\.?|CRLMP|W\.P\.?|C\.M\.A\.?|Crl\.A\.?|Crl\.R\.C\.?|O\.S\.?|C\.C\.?|S\.C\.?|E\.P\.?|M\.C\.?|C\.R\.P\.?)\s*(?:No\.?)?\s*([0-9]+)\s*\/\s*(20[12][0-9])\b/i);
             if (shortMatch) {
                 caseNumber = `${shortMatch[1].toUpperCase()} No. ${shortMatch[2]} / ${shortMatch[3]}`;
@@ -131,7 +128,7 @@ export const parseECourtsText = (rawText: string): ParsedECourtsTextResult => {
     }
 
     // 3. Extract Petitioner Name & Advocate
-    let petitionerName = 'Petitioner';
+    let petitionerName = '';
     let petitionerAdvocate = '';
 
     const petBlock = text.match(/(?:Petitioner(?:\s*and\s*Advocate(?:\s*Details)?)?\s*[:\-\s]*)([\s\S]*?)(?=Respondent|Act|FIR|Case History|Case Status|$)/i);
@@ -139,7 +136,7 @@ export const parseECourtsText = (rawText: string): ParsedECourtsTextResult => {
         const lines = petBlock[1].split('\n').map(l => l.trim()).filter(l => l && !l.toLowerCase().startsWith('qr code'));
         for (const line of lines) {
             const cleanLine = line.replace(/^\d+[\)\.\-]\s*/, '').trim();
-            if (cleanLine && !cleanLine.toLowerCase().includes('advocate') && petitionerName === 'Petitioner') {
+            if (cleanLine && !cleanLine.toLowerCase().includes('advocate') && !petitionerName) {
                 petitionerName = cleanLine;
             } else if (cleanLine.toLowerCase().includes('advocate') || cleanLine.toLowerCase().includes('bar')) {
                 petitionerAdvocate = cleanLine.replace(/advocate\s*[:\-\s]*/i, '').trim();
@@ -147,8 +144,7 @@ export const parseECourtsText = (rawText: string): ParsedECourtsTextResult => {
         }
     }
 
-    // Fallback for single line petitioner
-    if (petitionerName === 'Petitioner') {
+    if (!petitionerName) {
         const petMatch = text.match(/(?:Petitioner(?:\s*Details)?\s*[:\-\s]?\s*)(?:1\)\s*)?([^\n\r]+)/i);
         if (petMatch && petMatch[1]) {
             const clean = petMatch[1].replace(/Advocate[\s\-\:]+.*$/i, '').trim();
@@ -159,7 +155,7 @@ export const parseECourtsText = (rawText: string): ParsedECourtsTextResult => {
     }
 
     // 4. Extract Respondent Name & Advocate
-    let respondentName = 'Respondent / State';
+    let respondentName = '';
     let respondentAdvocate = '';
 
     const respBlock = text.match(/(?:Respondent(?:\s*and\s*Advocate(?:\s*Details)?)?\s*[:\-\s]*)([\s\S]*?)(?=Act|FIR|Case History|Case Status|Under Act|$)/i);
@@ -167,7 +163,7 @@ export const parseECourtsText = (rawText: string): ParsedECourtsTextResult => {
         const lines = respBlock[1].split('\n').map(l => l.trim()).filter(l => l && !l.toLowerCase().startsWith('qr code'));
         for (const line of lines) {
             const cleanLine = line.replace(/^\d+[\)\.\-]\s*/, '').trim();
-            if (cleanLine && !cleanLine.toLowerCase().includes('advocate') && respondentName === 'Respondent / State') {
+            if (cleanLine && !cleanLine.toLowerCase().includes('advocate') && !respondentName) {
                 respondentName = cleanLine;
             } else if (cleanLine.toLowerCase().includes('advocate') || cleanLine.toLowerCase().includes('bar')) {
                 respondentAdvocate = cleanLine.replace(/advocate\s*[:\-\s]*/i, '').trim();
@@ -177,7 +173,7 @@ export const parseECourtsText = (rawText: string): ParsedECourtsTextResult => {
 
     // Quick check for "X vs. Y" format in raw text
     const vsMatch = text.match(/([A-Za-z0-9\.\s\,\&]+?)\s+(?:vs\.?|v\.|versus)\s+([A-Za-z0-9\.\s\,\&]+)/i);
-    if (vsMatch && (petitionerName === 'Petitioner' || petitionerName === 'and Advocate')) {
+    if (vsMatch && !petitionerName) {
         petitionerName = vsMatch[1].trim();
         respondentName = vsMatch[2].split('\n')[0].trim();
     }
@@ -190,81 +186,56 @@ export const parseECourtsText = (rawText: string): ParsedECourtsTextResult => {
     if (nextDateMatch && nextDateMatch[1]) {
         nextHearingDate = parseIndianCourtDate(nextDateMatch[1]);
     } else {
-        // Search any date mentioned with "Next Date" in SMS
         const smsDateMatch = text.match(/(?:Next\s*Date\s*[:\-\s]?\s*)([0-9]{1,2}[\-\/\.][0-9]{1,2}[\-\/\.][0-9]{2,4})/i);
         if (smsDateMatch && smsDateMatch[1]) {
             nextHearingDate = parseIndianCourtDate(smsDateMatch[1]);
         }
     }
 
-    // Case Stage
-    let stage = 'PLEADING';
-    const stageMatch = text.match(/(?:Case\s*Stage\s*[:\-\s]?\s*)([^\n\r]+)/i);
+    // 6. Purpose of Hearing & Case Stage
+    const purpMatch = text.match(/(?:Purpose\s*(?:of\s*Hearing)?\s*[:\-\s]?\s*)([^\n\r]+)/i);
+    if (purpMatch && purpMatch[1]) {
+        nextHearingPurpose = purpMatch[1].trim();
+    }
+
+    let stage = 'Pleading / Appearance';
+    const stageMatch = text.match(/(?:Case\s*Stage|Stage\s*of\s*Case)\s*[:\-\s]?\s*([^\n\r]+)/i);
     if (stageMatch && stageMatch[1]) {
         stage = stageMatch[1].trim();
-        nextHearingPurpose = stage;
     }
 
-    // Next hearing purpose
-    const purposeMatch = text.match(/(?:for\s+)([A-Za-z\s\&]+?)(?:in\s+Court|\n|\r|$)/i);
-    if (purposeMatch && purposeMatch[1]) {
-        nextHearingPurpose = `For ${purposeMatch[1].trim()}`;
-    }
+    // 7. Judge & Court Hall
+    let presidingJudge: string | undefined;
+    let courtHall: string | undefined;
 
-    // 6. Extract Court Hall & Presiding Judge
-    let courtHall = 'Court Hall';
-    let presidingJudge = "Hon'ble Court";
-    const judgeMatch = text.match(/(?:Court\s*(?:Number\s*and\s*)?Judge\s*[:\-\s]?\s*)([^\n\r]+)/i);
+    const judgeMatch = text.match(/(?:Court\s*Number\s*and\s*Judge|Coram|Hon'ble\s*Judge)\s*[:\-\s]?\s*([^\n\r]+)/i);
     if (judgeMatch && judgeMatch[1]) {
-        const cleanJudge = judgeMatch[1].replace(/Last\s*Business\s*Date.*$/i, '').trim();
-        presidingJudge = cleanJudge;
-        courtHall = cleanJudge;
-    } else {
-        const hallMatch = text.match(/(Court\s*Hall\s*(?:No\.?)?\s*[0-9A-Za-z]+)/i);
-        if (hallMatch) {
-            courtHall = hallMatch[1].trim();
+        const fullJudgeStr = judgeMatch[1].trim();
+        if (fullJudgeStr.includes('-')) {
+            const parts = fullJudgeStr.split('-');
+            courtHall = parts[0].trim();
+            presidingJudge = parts.slice(1).join('-').trim();
+        } else {
+            presidingJudge = fullJudgeStr;
         }
     }
 
-    // 7. Extract Statutory Acts & Sections (CrPC, IPC, BNSS, BNS, CPC, NI Act, POCSO)
+    // 8. Sections & Acts
     const sections: Array<{ act: LegalActType; section: string; description?: string }> = [];
 
-    // Check specific eCourts layout: "Under Act(s): ... Under Section(s): ..."
-    const underActMatch = text.match(/(?:Under\s*Act\(s\)\s*[:\-\s]?\s*)([^\n\r]+)/i);
-    const underSecMatch = text.match(/(?:Under\s*Section\(s\)\s*[:\-\s]?\s*)([^\n\r]+)/i);
-
-    if (underActMatch || underSecMatch) {
-        const actStr = (underActMatch ? underActMatch[1] : '').toUpperCase();
-        const secStr = underSecMatch ? underSecMatch[1].trim() : '156';
-
-        let actType: LegalActType = 'CRPC';
-        if (actStr.includes('CRIMINAL PROCEDURE') || actStr.includes('CRPC')) actType = 'CRPC';
-        else if (actStr.includes('PENAL CODE') || actStr.includes('IPC')) actType = 'IPC';
-        else if (actStr.includes('BHARATIYA NYAYA') || actStr.includes('BNS')) actType = 'BNS';
-        else if (actStr.includes('BHARATIYA NAGARIK') || actStr.includes('BNSS')) actType = 'BNSS';
-        else if (actStr.includes('CIVIL PROCEDURE') || actStr.includes('CPC')) actType = 'CPC';
-
-        sections.push({
-            act: actType,
-            section: secStr,
-            description: `Section ${secStr} of ${underActMatch ? underActMatch[1].trim() : 'Code of Criminal Procedure'}`
-        });
-    }
-
-    // Match BNS sections
-    const bnsMatches = text.matchAll(/(?:BNS|Bharatiya\s*Nyaya\s*Sanhita)(?:\s*2023)?(?:\s*-\s*|\s*Sec(?:tion)?\s*|\s*)([0-9]+(?:\([0-9a-zA-Z]+\))?)/gi);
+    const bnsMatches = text.matchAll(/(?:BNS|Bharatiya\s*Nyaya\s*Sanhita)(?:\s*-\s*|\s*Sec(?:tion)?\s*|\s*)([0-9]+[A-Za-z]?)(?:\(([0-9]+)\))?/gi);
     for (const match of bnsMatches) {
-        if (!sections.some(s => s.act === 'BNS' && s.section === match[1])) {
+        const sec = match[2] ? `${match[1]}(${match[2]})` : match[1];
+        if (!sections.some(s => s.act === 'BNS' && s.section === sec)) {
             sections.push({
                 act: 'BNS',
-                section: match[1],
-                description: `Section ${match[1]} of Bharatiya Nyaya Sanhita, 2023`,
+                section: sec,
+                description: `Section ${sec} of Bharatiya Nyaya Sanhita, 2023`,
             });
         }
     }
 
-    // Match BNSS sections
-    const bnssMatches = text.matchAll(/(?:BNSS|Bharatiya\s*Nagarik\s*Suraksha)(?:\s*2023)?(?:\s*-\s*|\s*Sec(?:tion)?\s*|\s*)([0-9]+(?:\([0-9a-zA-Z]+\))?)/gi);
+    const bnssMatches = text.matchAll(/(?:BNSS|Bharatiya\s*Nagarik\s*Suraksha\s*Sanhita)(?:\s*-\s*|\s*Sec(?:tion)?\s*|\s*)([0-9]+[A-Za-z]?)/gi);
     for (const match of bnssMatches) {
         if (!sections.some(s => s.act === 'BNSS' && s.section === match[1])) {
             sections.push({
@@ -275,7 +246,6 @@ export const parseECourtsText = (rawText: string): ParsedECourtsTextResult => {
         }
     }
 
-    // Match IPC sections
     const ipcMatches = text.matchAll(/(?:IPC|Indian\s*Penal\s*Code)(?:\s*-\s*|\s*Sec(?:tion)?\s*|\s*)([0-9]+[A-Za-z]?)/gi);
     for (const match of ipcMatches) {
         if (!sections.some(s => s.act === 'IPC' && s.section === match[1])) {
@@ -287,7 +257,6 @@ export const parseECourtsText = (rawText: string): ParsedECourtsTextResult => {
         }
     }
 
-    // Match CrPC sections
     const crpcMatches = text.matchAll(/(?:CrPC|Cr\.P\.C\.)(?:\s*-\s*|\s*Sec(?:tion)?\s*|\s*)([0-9]+[A-Za-z]?)/gi);
     for (const match of crpcMatches) {
         if (!sections.some(s => s.act === 'CRPC' && s.section === match[1])) {
@@ -299,7 +268,6 @@ export const parseECourtsText = (rawText: string): ParsedECourtsTextResult => {
         }
     }
 
-    // Match CPC sections
     const cpcMatches = text.matchAll(/(?:CPC|Code\s*of\s*Civil\s*Procedure)(?:\s*-\s*|\s*Sec(?:tion)?\s*|\s*)([0-9]+|Order\s*[0-9A-Za-z\s]+)/gi);
     for (const match of cpcMatches) {
         if (!sections.some(s => s.act === 'CPC' && s.section === match[1])) {
@@ -311,20 +279,25 @@ export const parseECourtsText = (rawText: string): ParsedECourtsTextResult => {
         }
     }
 
-    // Default if no sections detected
-    if (sections.length === 0) {
-        if (caseTypeName.toLowerCase().includes('crl') || text.toLowerCase().includes('bail') || text.toLowerCase().includes('police') || text.toLowerCase().includes('magistrate')) {
-            sections.push({ act: 'BNSS', section: '482', description: 'Anticipatory Bail / Procedure under BNSS 2023' });
-        } else {
-            sections.push({ act: 'CPC', section: 'Sec 9', description: 'Civil Jurisdiction' });
-        }
+    // 9. FIR Details (if present)
+    let firDetails: { policeStation: string; firNumber: string; firYear: string } | undefined;
+    const firMatch = text.match(/(?:Police\s*Station\s*[:\-\s]?\s*)([^\n\r]+)/i);
+    const firNumMatch = text.match(/(?:FIR\s*Number|Crime\s*No\.?)\s*[:\-\s]?\s*([0-9]+)/i);
+    const firYrMatch = text.match(/(?:Year\s*[:\-\s]?\s*)(20[12][0-9])/i);
+
+    if (firMatch && firNumMatch) {
+        firDetails = {
+            policeStation: firMatch[1].trim(),
+            firNumber: firNumMatch[1].trim(),
+            firYear: firYrMatch ? firYrMatch[1].trim() : new Date().getFullYear().toString(),
+        };
     }
 
-    // 8. Determine Court Name
+    // 10. Determine Court Name
     let courtName = '';
     const firstLines = text.split('\n').map(l => l.trim()).filter(Boolean);
     const headerLine = firstLines[0] || '';
-    if (headerLine.toLowerCase().includes('magistrate') || headerLine.toLowerCase().includes('court') || headerLine.toLowerCase().includes('judge')) {
+    if (headerLine.toLowerCase().includes('magistrate') || headerLine.toLowerCase().includes('court') || headerLine.toLowerCase().includes('judge') || headerLine.toLowerCase().includes('high court')) {
         courtName = headerLine;
     }
 
@@ -341,79 +314,44 @@ export const parseECourtsText = (rawText: string): ParsedECourtsTextResult => {
         else if (cnr.startsWith('TNTN')) courtName = 'Principal District & Sessions Court - Tirunelveli';
     }
 
+    // STRICT REJECTION: If no CNR, no Case Number, no Petitioner, no Court Name, and no FIR were found,
+    // this is 100% NOT a court case and must be rejected!
+    const hasCoreEvidence = Boolean(
+        cnr ||
+        caseNumber ||
+        (petitionerName && respondentName) ||
+        (courtName && (petitionerName || caseNumber)) ||
+        firDetails ||
+        sections.length > 0
+    );
+
+    if (!hasCoreEvidence) {
+        return {
+            success: false,
+            message: 'Invalid Screenshot: The uploaded image does not contain recognizable court case details, eCourts status, or judicial records. Please upload a valid case screenshot.',
+            rawText,
+        };
+    }
+
+    // Set fallbacks ONLY if genuine case evidence was proven
+    if (!caseTypeName) {
+        caseTypeName = text.toLowerCase().includes('crl') || firDetails ? 'Criminal Case' : 'Civil Case';
+    }
+    if (!petitionerName) {
+        petitionerName = 'Petitioner';
+    }
+    if (!respondentName) {
+        respondentName = 'Respondent / State';
+    }
     if (!courtName) {
-        const lower = text.toLowerCase();
-        if (lower.includes('tiruvottiyur') || lower.includes('thiruvottiyur')) {
-            courtName = 'Judicial Magistrate Court - Tiruvottiyur (Tiruvallur District)';
-        } else if (lower.includes('madurai bench')) {
-            courtName = 'Madras High Court - Madurai Bench';
-        } else if (lower.includes('city civil') || lower.includes('high court campus')) {
-            courtName = 'City Civil Court & Sessions Court - Chennai (HC Campus)';
-        } else if (lower.includes('egmore') || lower.includes('cmm')) {
-            courtName = 'Chief Metropolitan Magistrate Court - Egmore, Chennai';
-        } else if (lower.includes('saidapet')) {
-            courtName = 'Metropolitan Magistrate Courts Complex - Saidapet, Chennai';
-        } else if (lower.includes('george town') || lower.includes('georgetown')) {
-            courtName = 'Metropolitan Magistrate Courts Complex - George Town, Chennai';
-        } else if (lower.includes('tiruvallur') || lower.includes('thiruvallur')) {
-            courtName = 'Principal District & Sessions Court - Tiruvallur';
-        } else if (lower.includes('chengalpattu') || lower.includes('chengalpet')) {
-            courtName = 'Principal District & Sessions Court - Chengalpattu';
-        } else if (lower.includes('kancheepuram') || lower.includes('kanchipuram')) {
-            courtName = 'Principal District & Sessions Court - Kancheepuram';
-        } else if (lower.includes('coimbatore')) {
-            courtName = 'Principal District & Sessions Court - Coimbatore';
-        } else {
-            courtName = 'District & Sessions Court';
-        }
+        courtName = 'Court of Competent Jurisdiction';
     }
 
-    // 9. FIR Details (if present)
-    const firMatch = text.match(/(?:Police\s*Station\s*[:\-\s]?\s*)([^\n\r]+)/i);
-    const firNumMatch = text.match(/(?:FIR\s*Number\s*[:\-\s]?\s*)([0-9]+)/i);
-    const firYrMatch = text.match(/(?:Year\s*[:\-\s]?\s*)(20[12][0-9])/i);
-    let firNotes = '';
-    if (firMatch) {
-        firNotes = `PS: ${firMatch[1].trim()}`;
-        if (firNumMatch) firNotes += ` | FIR: ${firNumMatch[1].trim()}/${firYrMatch ? firYrMatch[1].trim() : ''}`;
-    }
-
-    // 10. Extract Case History (Multi-Hearing Rows)
-    const hearings: Array<{ id: string; date: string; business: string; judge?: string; courtHall?: string }> = [];
-    const lines = text.split('\n');
-    for (const line of lines) {
-        const rowMatch = line.match(/(?:Judicial\s*Magistrate|Judge|Metropolitan\s*Magistrate|\d+)\s*\|\s*([0-9\-]+)\s*\|\s*([0-9\-]+)\s*\|\s*([^\n\r]+)/i);
-        if (rowMatch) {
-            const bDate = parseIndianCourtDate(rowMatch[1]) || rowMatch[1];
-            const nDate = parseIndianCourtDate(rowMatch[2]) || rowMatch[2];
-            const purp = rowMatch[3].trim();
-            hearings.push({
-                id: `h_${Date.now()}_${Math.random().toString(36).substr(2, 4)}`,
-                date: bDate,
-                business: `Next Date: ${nDate} | Purpose: ${purp}`,
-                judge: presidingJudge,
-                courtHall,
-            });
-        }
-    }
-
-    // If no multi-rows parsed, create initial hearing
-    if (hearings.length === 0) {
-        hearings.push({
-            id: 'h1',
-            date: new Date().toISOString().split('T')[0],
-            business: firNotes || 'Imported from eCourts record.',
-            judge: presidingJudge,
-            courtHall,
-        });
-    }
-
-    // 11. Build Case Title
     const caseTitle = `${petitionerName} vs. ${respondentName}`;
-    const safeCaseNo = caseNumber || (cnr ? `Case (${formatCNRDisplay(cnr)})` : 'New Court Matter');
+    const safeCaseNo = caseNumber || (cnr ? `CNR: ${formatCNRDisplay(cnr)}` : 'Court Case');
 
     const result: ECourtsCaseResult = {
-        cnr: cnr || `TNHC01${Date.now().toString().slice(-6)}2026`,
+        cnr: cnr || (cnrMatch ? cnrMatch[1] : ''),
         caseNumber: safeCaseNo,
         caseTypeName,
         filingDate: parseIndianCourtDate(text.match(/Filing\s*Date\s*[:\-\s]?\s*([0-9A-Za-z\s\,\/\-]+)/i)?.[1]) || new Date().toISOString().split('T')[0],
@@ -430,10 +368,11 @@ export const parseECourtsText = (rawText: string): ParsedECourtsTextResult => {
             name: respondentName,
             advocate: respondentAdvocate || undefined,
         },
-        caseCategory: caseTypeName.toLowerCase().includes('crl') || text.toLowerCase().includes('police') || text.toLowerCase().includes('magistrate') ? 'CRIMINAL' : 'CIVIL',
+        caseCategory: caseTypeName.toLowerCase().includes('crl') || firDetails || text.toLowerCase().includes('police') ? 'CRIMINAL' : 'CIVIL',
         stage: mapCourtStageToCaseStage(stage),
         status: 'ACTIVE',
         sections,
+        firDetails,
         nextHearing: nextHearingDate
             ? {
                   date: nextHearingDate,
@@ -441,7 +380,7 @@ export const parseECourtsText = (rawText: string): ParsedECourtsTextResult => {
                   courtHall,
               }
             : undefined,
-        hearings,
+        hearings: [],
     };
 
     return {
@@ -450,4 +389,3 @@ export const parseECourtsText = (rawText: string): ParsedECourtsTextResult => {
         rawText,
     };
 };
-

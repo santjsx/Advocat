@@ -12,6 +12,8 @@ import { BottomTabScreenProps } from '@react-navigation/bottom-tabs';
 import dayjs from 'dayjs';
 import { Deadline, UrgencyLevel } from '../models/Deadline';
 import { cancelNotifications } from '../services/notifications';
+import { SmoothPressable } from '../components/SmoothPressable';
+import { AnimatedListItem } from '../components/AnimatedListItem';
 
 type Props = CompositeScreenProps<
     BottomTabScreenProps<MainTabParamList, 'Deadlines'>,
@@ -23,12 +25,12 @@ type FilterStatus = 'ALL' | 'PENDING' | 'COMPLETED' | 'OVERDUE';
 export const AllDeadlinesScreen: React.FC<Props> = ({ navigation }) => {
     const { colors, spacing, layout } = useTheme();
 
-    const URGENCY_COLORS: Record<UrgencyLevel, string> = {
+    const URGENCY_COLORS: Record<UrgencyLevel, string> = useMemo(() => ({
         CRITICAL: colors.critical,
         HIGH: colors.warning,
         MEDIUM: colors.accent,
         LOW: colors.safe,
-    };
+    }), [colors]);
 
     const getUrgencyBackground = (urgency: UrgencyLevel): string => {
         switch (urgency) {
@@ -101,62 +103,69 @@ export const AllDeadlinesScreen: React.FC<Props> = ({ navigation }) => {
         }
     }, [undoDeadline]);
 
-    const getCaseName = (caseId: string) => {
+    const getCaseName = useCallback((caseId: string) => {
         return cases.find(c => c.id === caseId)?.name || 'Unknown';
-    };
+    }, [cases]);
 
     const filterCaseName = filterCaseId ? getCaseName(filterCaseId) : 'All Cases';
     const styles = createStyles(colors, spacing, layout);
 
-    const renderItem = ({ item }: { item: Deadline }) => {
+    const renderItem = useCallback(({ item, index }: { item: Deadline; index: number }) => {
         const overdue = isOverdue(item.dueDate, item.isCompleted);
         const bgColor = item.isCompleted ? 'transparent' : getUrgencyBackground(item.urgency);
         const borderColor = item.isCompleted ? colors.border : (overdue ? colors.critical : URGENCY_COLORS[item.urgency]);
 
         return (
-            <TouchableOpacity
-                style={[styles.card, { backgroundColor: bgColor, borderColor }, item.isCompleted && styles.completedCard]}
-                onPress={() => navigation.navigate('EditDeadline', { deadlineId: item.id })}
-                activeOpacity={0.7}
-            >
-                <View style={styles.cardContent}>
-                    <View style={styles.cardHeader}>
-                        <Text style={[styles.deadlineTitle, item.isCompleted && styles.completedText]} numberOfLines={1}>
-                            {item.title}
-                        </Text>
-                        {!item.isCompleted && (
-                            <View style={[styles.urgencyDot, { backgroundColor: URGENCY_COLORS[item.urgency] }]} />
-                        )}
+            <AnimatedListItem index={index}>
+                <SmoothPressable
+                    style={[styles.card, { backgroundColor: bgColor, borderColor }, item.isCompleted && styles.completedCard]}
+                    onPress={() => navigation.navigate('EditDeadline', { deadlineId: item.id })}
+                    haptic="light"
+                    scaleTo={0.98}
+                >
+                    <View style={styles.cardContent}>
+                        <View style={styles.cardHeader}>
+                            <Text style={[styles.deadlineTitle, item.isCompleted && styles.completedText]} numberOfLines={1}>
+                                {item.title}
+                            </Text>
+                            {!item.isCompleted && (
+                                <View style={[styles.urgencyDot, { backgroundColor: URGENCY_COLORS[item.urgency] }]} />
+                            )}
+                        </View>
+
+                        <Text style={styles.caseName}>{getCaseName(item.caseId)}</Text>
+
+                        <View style={styles.cardFooter}>
+                            <Text style={styles.typeText}>{item.type.replace('_', ' ')}</Text>
+                            <Text style={[styles.daysText, overdue && styles.overdueText, item.isCompleted && styles.completedDays]}>
+                                {item.isCompleted ? 'Completed' : getDaysRemaining(item.dueDate)}
+                            </Text>
+                        </View>
                     </View>
 
-                    <Text style={styles.caseName}>{getCaseName(item.caseId)}</Text>
+                    <View style={styles.actions}>
+                        <SmoothPressable
+                            style={[styles.actionBtn, item.isCompleted && styles.actionBtnCompleted]}
+                            onPress={() => handleToggle(item)}
+                            haptic={item.isCompleted ? 'light' : 'success'}
+                            scaleTo={0.9}
+                        >
+                            <Text style={styles.actionIcon}>{item.isCompleted ? '↩' : '✓'}</Text>
+                        </SmoothPressable>
 
-                    <View style={styles.cardFooter}>
-                        <Text style={styles.typeText}>{item.type.replace('_', ' ')}</Text>
-                        <Text style={[styles.daysText, overdue && styles.overdueText, item.isCompleted && styles.completedDays]}>
-                            {item.isCompleted ? 'Completed' : getDaysRemaining(item.dueDate)}
-                        </Text>
+                        <SmoothPressable
+                            style={[styles.actionBtn, styles.deleteBtn]}
+                            onPress={() => handleDelete(item)}
+                            haptic="warning"
+                            scaleTo={0.9}
+                        >
+                            <Text style={styles.actionIcon}>✕</Text>
+                        </SmoothPressable>
                     </View>
-                </View>
-
-                <View style={styles.actions}>
-                    <TouchableOpacity
-                        style={[styles.actionBtn, item.isCompleted && styles.actionBtnCompleted]}
-                        onPress={() => handleToggle(item)}
-                    >
-                        <Text style={styles.actionIcon}>{item.isCompleted ? '↩' : '✓'}</Text>
-                    </TouchableOpacity>
-
-                    <TouchableOpacity
-                        style={[styles.actionBtn, styles.deleteBtn]}
-                        onPress={() => handleDelete(item)}
-                    >
-                        <Text style={styles.actionIcon}>✕</Text>
-                    </TouchableOpacity>
-                </View>
-            </TouchableOpacity>
+                </SmoothPressable>
+            </AnimatedListItem>
         );
-    };
+    }, [navigation, colors, URGENCY_COLORS, getCaseName, handleToggle, handleDelete, styles]);
 
     return (
         <SafeAreaView style={styles.container} edges={['top']}>
@@ -166,23 +175,30 @@ export const AllDeadlinesScreen: React.FC<Props> = ({ navigation }) => {
                 <View style={styles.filtersRow}>
                     <View style={styles.statusFilters}>
                         {(['ALL', 'PENDING', 'OVERDUE', 'COMPLETED'] as FilterStatus[]).map(s => (
-                            <TouchableOpacity
+                            <SmoothPressable
                                 key={s}
                                 style={[styles.filterChip, filterStatus === s && styles.filterChipActive]}
                                 onPress={() => setFilterStatus(s)}
+                                haptic="selection"
+                                scaleTo={0.94}
                             >
                                 <Text style={[styles.filterText, filterStatus === s && styles.filterTextActive]}>
                                     {s}
                                 </Text>
-                            </TouchableOpacity>
+                            </SmoothPressable>
                         ))}
                     </View>
                 </View>
 
-                <TouchableOpacity style={styles.caseFilterButton} onPress={() => setShowCaseFilter(true)}>
+                <SmoothPressable
+                    style={styles.caseFilterButton}
+                    onPress={() => setShowCaseFilter(true)}
+                    haptic="light"
+                    scaleTo={0.97}
+                >
                     <Text style={styles.caseFilterText}>{filterCaseName}</Text>
                     <Text style={styles.dropdownArrow}>▼</Text>
-                </TouchableOpacity>
+                </SmoothPressable>
             </View>
 
             <FlatList
@@ -204,40 +220,55 @@ export const AllDeadlinesScreen: React.FC<Props> = ({ navigation }) => {
             {undoDeadline && (
                 <View style={styles.undoToast}>
                     <Text style={styles.undoText}>Deadline deleted</Text>
-                    <TouchableOpacity onPress={handleUndo}>
+                    <SmoothPressable onPress={handleUndo} haptic="medium" scaleTo={0.94}>
                         <Text style={styles.undoButton}>UNDO</Text>
-                    </TouchableOpacity>
+                    </SmoothPressable>
                 </View>
             )}
 
-            <TouchableOpacity style={styles.fab} onPress={() => navigation.navigate('AddDeadline', {})}>
+            <SmoothPressable
+                style={styles.fab}
+                onPress={() => navigation.navigate('AddDeadline', {})}
+                haptic="medium"
+                scaleTo={0.92}
+            >
                 <Text style={styles.fabText}>+</Text>
-            </TouchableOpacity>
+            </SmoothPressable>
 
-            <Modal visible={showCaseFilter} animationType="fade" transparent>
+            <Modal
+                visible={showCaseFilter}
+                animationType="fade"
+                transparent
+                statusBarTranslucent
+                onRequestClose={() => setShowCaseFilter(false)}
+            >
                 <TouchableOpacity style={styles.modalOverlay} activeOpacity={1} onPress={() => setShowCaseFilter(false)}>
                     <View style={styles.filterModal}>
                         <Text style={styles.modalTitle}>Filter by Case</Text>
 
-                        <TouchableOpacity
+                        <SmoothPressable
                             style={[styles.modalItem, !filterCaseId && styles.modalItemSelected]}
                             onPress={() => { setFilterCaseId(null); setShowCaseFilter(false); }}
+                            haptic="selection"
+                            scaleTo={0.98}
                         >
                             <Text style={[styles.modalItemText, !filterCaseId && styles.modalItemTextSelected]}>
                                 All Cases
                             </Text>
-                        </TouchableOpacity>
+                        </SmoothPressable>
 
                         {cases.filter(c => c.status === 'ACTIVE').map(c => (
-                            <TouchableOpacity
+                            <SmoothPressable
                                 key={c.id}
                                 style={[styles.modalItem, filterCaseId === c.id && styles.modalItemSelected]}
                                 onPress={() => { setFilterCaseId(c.id); setShowCaseFilter(false); }}
+                                haptic="selection"
+                                scaleTo={0.98}
                             >
                                 <Text style={[styles.modalItemText, filterCaseId === c.id && styles.modalItemTextSelected]}>
                                     {c.name}
                                 </Text>
-                            </TouchableOpacity>
+                            </SmoothPressable>
                         ))}
                     </View>
                 </TouchableOpacity>

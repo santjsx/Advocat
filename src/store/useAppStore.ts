@@ -10,6 +10,8 @@ import {
     DEFAULT_NOTIFICATION_PREFERENCES
 } from '../models/Notification';
 import { AdvocateProfile, DEFAULT_ADVOCATE_PROFILE, PaperbookBundle } from '../models/Pleading';
+import { AiUsageSummary, DEFAULT_AI_USAGE_SUMMARY, AiUsageRecord, DeepSeekBalanceInfo } from '../models/AiUsage';
+import { fetchDeepSeekBalance, calculateTokenCost } from '../services/deepseekUsageService';
 import { MOCK_CASES, MOCK_DEADLINES } from '../data/mockCases';
 import { storage } from '../services/storage';
 import { ThemeMode } from '../theme/colors';
@@ -26,6 +28,18 @@ interface AppState {
     // Advocate Profile & AI Settings
     advocateProfile: AdvocateProfile;
     updateAdvocateProfile: (profile: Partial<AdvocateProfile>) => void;
+
+    // DeepSeek AI Usage & Credit Telemetry
+    aiUsageSummary: AiUsageSummary;
+    recordAiTokenUsage: (params: {
+        promptTokens: number;
+        completionTokens: number;
+        totalTokens: number;
+        model?: string;
+        feature?: 'PLEADING' | 'RESEARCH' | 'OCR_VISION' | 'TRANSLATION' | 'OTHER';
+    }) => void;
+    setAiUsageSummary: (summary: Partial<AiUsageSummary>) => void;
+    syncDeepSeekBalance: () => Promise<DeepSeekBalanceInfo>;
 
     // Paperbook Bundles
     paperbookBundles: PaperbookBundle[];
@@ -101,7 +115,8 @@ interface AppState {
         researchNotes?: ResearchNote[],
         searchHistory?: SearchHistory[],
         advocateProfile?: AdvocateProfile,
-        paperbookBundles?: PaperbookBundle[]
+        paperbookBundles?: PaperbookBundle[],
+        aiUsageSummary?: AiUsageSummary
     }) => void;
 }
 
@@ -118,6 +133,7 @@ export const useAppStore = create<AppState>()(
             themeMode: 'dark' as ThemeMode,
             advocateProfile: DEFAULT_ADVOCATE_PROFILE,
             paperbookBundles: [],
+            aiUsageSummary: DEFAULT_AI_USAGE_SUMMARY,
 
             // Notification State
             notificationPrefs: DEFAULT_NOTIFICATION_PREFERENCES,
@@ -125,6 +141,64 @@ export const useAppStore = create<AppState>()(
 
             setUserName: (name) => set({ userName: name }),
             setThemeMode: (mode) => set({ themeMode: mode }),
+
+            recordAiTokenUsage: ({ promptTokens, completionTokens, totalTokens, model = 'deepseek-chat', feature = 'PLEADING' }) => {
+                const cost = calculateTokenCost(promptTokens, completionTokens, model);
+                const record: AiUsageRecord = {
+                    id: `usage_${Date.now()}_${Math.random().toString(36).substring(2, 7)}`,
+                    timestamp: new Date().toISOString(),
+                    promptTokens,
+                    completionTokens,
+                    totalTokens,
+                    model,
+                    feature,
+                    costUsd: cost,
+                };
+
+                set((state) => {
+                    const current = state.aiUsageSummary || DEFAULT_AI_USAGE_SUMMARY;
+                    const newTotalTokens = current.totalTokens + totalTokens;
+                    const newPromptTokens = current.promptTokens + promptTokens;
+                    const newCompletionTokens = current.completionTokens + completionTokens;
+                    const newRequests = current.totalRequests + 1;
+                    const newCost = Math.round((current.totalCostUsd + cost) * 10000) / 10000;
+
+                    return {
+                        aiUsageSummary: {
+                            ...current,
+                            totalTokens: newTotalTokens,
+                            promptTokens: newPromptTokens,
+                            completionTokens: newCompletionTokens,
+                            totalRequests: newRequests,
+                            totalCostUsd: newCost,
+                            history: [record, ...(current.history || [])].slice(0, 100),
+                        }
+                    };
+                });
+            },
+
+            setAiUsageSummary: (summary) => set((state) => ({
+                aiUsageSummary: { ...(state.aiUsageSummary || DEFAULT_AI_USAGE_SUMMARY), ...summary }
+            })),
+
+            syncDeepSeekBalance: async () => {
+                const apiKey = get().advocateProfile?.deepseekApiKey;
+                const result = await fetchDeepSeekBalance(apiKey || '');
+                if (result.isAvailable || result.totalBalance !== '0.00' || !result.error) {
+                    set((state) => ({
+                        aiUsageSummary: {
+                            ...(state.aiUsageSummary || DEFAULT_AI_USAGE_SUMMARY),
+                            toppedUpBalance: result.toppedUpBalance,
+                            totalBalance: result.totalBalance,
+                            grantedBalance: result.grantedBalance,
+                            currency: result.currency,
+                            isAvailable: result.isAvailable,
+                            lastSyncedAt: new Date().toISOString(),
+                        }
+                    }));
+                }
+                return result;
+            },
 
             loadMockData: () => set((state) => {
                 const existingIds = new Set((state.cases || []).map(c => c.id));
@@ -187,9 +261,18 @@ export const useAppStore = create<AppState>()(
             })),
 
             deleteCase: (caseId) => set((state) => ({
-                cases: state.cases.filter((c) => c.id !== caseId),
-                deadlines: state.deadlines.filter((d) => d.caseId !== caseId),
-                documents: state.documents.filter((doc) => doc.caseId !== caseId),
+                cases: (state.cases || []).filter((c) => c.id !== caseId),
+                deadlines: (state.deadlines || []).filter((d) => d.caseId !== caseId),
+                documents: (state.documents || []).filter((doc) => doc.caseId !== caseId),
+                paperbookBundles: (state.paperbookBundles || []).filter((b) => b.caseId !== caseId),
+                citations: (state.citations || []).map((cit) => ({
+                    ...cit,
+                    linkedCaseIds: (cit.linkedCaseIds || []).filter((id) => id !== caseId)
+                })),
+                researchNotes: (state.researchNotes || []).map((note) => ({
+                    ...note,
+                    linkedCaseIds: (note.linkedCaseIds || []).filter((id) => id !== caseId)
+                })),
             })),
 
             addCaseNote: (caseId, note) => set((state) => ({

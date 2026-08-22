@@ -1,8 +1,9 @@
-import React from 'react';
-import { View, Text, StyleSheet, TouchableOpacity } from 'react-native';
+import React, { useMemo } from 'react';
+import { View, Text, StyleSheet } from 'react-native';
 import dayjs from 'dayjs';
 import { Deadline, UrgencyLevel } from '../models/Deadline';
 import { useTheme } from '../theme/ThemeContext';
+import { SmoothPressable } from './SmoothPressable';
 
 interface Props {
     deadline: Deadline;
@@ -11,42 +12,32 @@ interface Props {
     onToggleComplete: () => void;
 }
 
-export const DeadlineItem: React.FC<Props> = ({ deadline, caseName, onPress, onToggleComplete }) => {
+const DeadlineItemComponent: React.FC<Props> = ({ deadline, caseName, onPress, onToggleComplete }) => {
     const { colors, spacing, layout, shadows } = useTheme();
 
-    const URGENCY_COLORS: Record<UrgencyLevel, string> = {
+    const URGENCY_COLORS: Record<UrgencyLevel, string> = useMemo(() => ({
         CRITICAL: colors.critical,
         HIGH: colors.warning,
         MEDIUM: colors.accent,
         LOW: colors.safe,
-    };
-
-    const getUrgencyBackground = (urgency: UrgencyLevel, isOverdue: boolean): string => {
-        // Always use surface color (white/dark grey) for the card background to stay clean
-        // We rely on the accent bar and labels to convey urgency now
-        if (isOverdue && shadows.medium.shadowColor === '#000') { // Check if not light mode via proxies or just sticky to surface
-            // Actually, let's just stick to surface for light mode to avoid the 'dirty' look mentioned
-            return colors.surface;
-        }
-        return colors.surface;
-    };
+    }), [colors]);
 
     const isCompleted = deadline.isCompleted;
     const isOverdue = !isCompleted && dayjs(deadline.dueDate).isBefore(dayjs(), 'day');
     const daysUntil = dayjs(deadline.dueDate).diff(dayjs(), 'day');
 
-    const bgColor = isCompleted ? colors.surface : getUrgencyBackground(deadline.urgency, isOverdue);
+    const bgColor = colors.surface;
     const accentColor = isCompleted ? colors.textTertiary : (isOverdue ? colors.overdue : URGENCY_COLORS[deadline.urgency]);
 
-    const getDaysLabel = () => {
+    const daysLabel = useMemo(() => {
         if (isCompleted) return 'Done';
         if (daysUntil < 0) return `${Math.abs(daysUntil)}d overdue`;
         if (daysUntil === 0) return 'Today';
         if (daysUntil === 1) return 'Tomorrow';
         return `${daysUntil}d left`;
-    };
+    }, [isCompleted, daysUntil]);
 
-    const styles = StyleSheet.create({
+    const styles = useMemo(() => StyleSheet.create({
         container: {
             flexDirection: 'row',
             marginBottom: spacing.s,
@@ -55,6 +46,7 @@ export const DeadlineItem: React.FC<Props> = ({ deadline, caseName, onPress, onT
             borderWidth: 1,
             borderColor: colors.border,
             overflow: 'hidden',
+            backgroundColor: bgColor,
             ...shadows.small,
         },
         completedContainer: {
@@ -130,17 +122,17 @@ export const DeadlineItem: React.FC<Props> = ({ deadline, caseName, onPress, onT
             fontSize: 14,
             fontWeight: 'bold',
         },
-    });
+    }), [colors, spacing, layout, shadows, bgColor]);
 
     return (
-        <TouchableOpacity
+        <SmoothPressable
             onPress={onPress}
             style={[
                 styles.container,
-                { backgroundColor: bgColor },
-                isCompleted && styles.completedContainer
+                isCompleted && styles.completedContainer,
             ]}
-            activeOpacity={0.8}
+            haptic="light"
+            scaleTo={0.98}
         >
             <View style={[styles.accentBar, { backgroundColor: accentColor }]} />
 
@@ -154,7 +146,7 @@ export const DeadlineItem: React.FC<Props> = ({ deadline, caseName, onPress, onT
                         isOverdue && styles.overdueLabel,
                         isCompleted && styles.completedLabel
                     ]}>
-                        {getDaysLabel()}
+                        {daysLabel}
                     </Text>
                 </View>
 
@@ -166,13 +158,26 @@ export const DeadlineItem: React.FC<Props> = ({ deadline, caseName, onPress, onT
                 </View>
             </View>
 
-            <TouchableOpacity
+            <SmoothPressable
                 onPress={onToggleComplete}
                 style={[styles.checkbox, isCompleted && styles.checkboxChecked]}
-                hitSlop={{ top: 12, bottom: 12, left: 12, right: 12 }}
+                hitSlop={12}
+                haptic={isCompleted ? 'light' : 'success'}
+                scaleTo={0.88}
             >
                 {isCompleted && <Text style={styles.checkmark}>✓</Text>}
-            </TouchableOpacity>
-        </TouchableOpacity>
+            </SmoothPressable>
+        </SmoothPressable>
     );
 };
+
+export const DeadlineItem = React.memo(DeadlineItemComponent, (prev, next) => {
+    return (
+        prev.deadline.id === next.deadline.id &&
+        prev.deadline.isCompleted === next.deadline.isCompleted &&
+        prev.deadline.dueDate === next.deadline.dueDate &&
+        prev.deadline.urgency === next.deadline.urgency &&
+        prev.deadline.title === next.deadline.title &&
+        prev.caseName === next.caseName
+    );
+});

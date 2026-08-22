@@ -3,7 +3,7 @@ import {
     View, Text, StyleSheet, FlatList, TextInput, TouchableOpacity, Modal
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
-import { MaterialCommunityIcons } from '@expo/vector-icons';
+import { MaterialCommunityIcons, Ionicons } from '@expo/vector-icons';
 import { useAppStore } from '../store/useAppStore';
 import { useTheme } from '../theme/ThemeContext';
 import { NativeStackScreenProps } from '@react-navigation/native-stack';
@@ -13,6 +13,8 @@ import { BottomTabScreenProps } from '@react-navigation/bottom-tabs';
 import dayjs from 'dayjs';
 import { Case, CaseStatus } from '../models/Case';
 import { ECourtsSearchModal } from '../components/ECourtsSearchModal';
+import { SmoothPressable } from '../components/SmoothPressable';
+import { AnimatedListItem } from '../components/AnimatedListItem';
 
 type Props = CompositeScreenProps<
     BottomTabScreenProps<MainTabParamList, 'Cases'>,
@@ -24,11 +26,11 @@ type SortOption = 'deadline' | 'created' | 'name';
 export const CaseListScreen: React.FC<Props> = ({ navigation }) => {
     const { colors, spacing, layout } = useTheme();
 
-    const STATUS_COLORS: Record<CaseStatus, string> = {
+    const STATUS_COLORS: Record<CaseStatus, string> = useMemo(() => ({
         ACTIVE: colors.safe,
         PENDING: colors.warning,
         CLOSED: colors.textTertiary,
-    };
+    }), [colors]);
 
     const cases = useAppStore(state => state.cases);
     const deadlines = useAppStore(state => state.deadlines);
@@ -49,13 +51,16 @@ export const CaseListScreen: React.FC<Props> = ({ navigation }) => {
             result = result.filter(c => c.status === filterStatus);
         }
 
-        if (search) {
-            const q = search.toLowerCase();
+        if (search.trim()) {
+            const q = search.trim().toLowerCase();
             const getClientName = (c: Case) => c.client?.name || c.clientName || '';
             result = result.filter(c =>
                 c.name.toLowerCase().includes(q) ||
                 getClientName(c).toLowerCase().includes(q) ||
-                c.caseNumber?.toLowerCase().includes(q)
+                (c.caseNumber && c.caseNumber.toLowerCase().includes(q)) ||
+                (c.courtName && c.courtName.toLowerCase().includes(q)) ||
+                (c.sections && c.sections.some(s => `${s.act} ${s.section}`.toLowerCase().includes(q))) ||
+                (c.description && c.description.toLowerCase().includes(q))
             );
         }
 
@@ -93,16 +98,15 @@ export const CaseListScreen: React.FC<Props> = ({ navigation }) => {
     const styles = createStyles(colors, spacing, layout);
 
     const getUniqueColor = (text: string) => {
-        // Generate a consistent color based on string char code sum
         const colorsList = [
-            '#4E7AC7', // Blue
-            '#C74E4E', // Red
-            '#4EC791', // Green
-            '#C78E4E', // Orange
-            '#9B4EC7', // Purple
-            '#4EC7C5', // Teal
-            '#C74E86', // Pink
-            '#734EC7', // Indigo
+            '#4E7AC7',
+            '#C74E4E',
+            '#4EC791',
+            '#C78E4E',
+            '#9B4EC7',
+            '#4EC7C5',
+            '#C74E86',
+            '#734EC7',
         ];
         let sum = 0;
         for (let i = 0; i < text.length; i++) {
@@ -111,93 +115,91 @@ export const CaseListScreen: React.FC<Props> = ({ navigation }) => {
         return colorsList[sum % colorsList.length];
     };
 
-    const renderItem = ({ item }: { item: Case }) => {
+    const renderItem = React.useCallback(({ item, index }: { item: Case; index: number }) => {
         const nextDeadline = getNextDeadline(item.id);
         const clientName = item.client?.name || item.clientName || 'Unknown';
         const stageLabel = item.stage?.replace('_', ' ') || 'Intake';
         const typeColor = getUniqueColor(item.caseType || 'General');
-        const caseNoColor = getUniqueColor(item.caseNumber || '000'); // Unique color for case number
+        const caseNoColor = getUniqueColor(item.caseNumber || '000');
 
         return (
-            <TouchableOpacity
-                style={styles.card}
-                onPress={() => navigation.navigate('CaseDetail', { caseId: item.id })}
-                activeOpacity={0.9}
-            >
-                {/* Colored Status Strip */}
-                <View style={[styles.statusStrip, { backgroundColor: STATUS_COLORS[item.status] }]} />
+            <AnimatedListItem index={index}>
+                <SmoothPressable
+                    style={styles.card}
+                    onPress={() => navigation.navigate('CaseDetail', { caseId: item.id })}
+                    haptic="light"
+                    scaleTo={0.98}
+                >
+                    <View style={[styles.statusStrip, { backgroundColor: STATUS_COLORS[item.status] }]} />
 
-                <View style={styles.cardContent}>
-                    {/* Header: Type Badge & Case No */}
-                    <View style={styles.cardTopRow}>
-                        <View style={[styles.typeBadge, { backgroundColor: typeColor + '20' }]}>
-                            <Text style={[styles.typeText, { color: typeColor }]}>{item.caseType}</Text>
+                    <View style={styles.cardContent}>
+                        <View style={styles.cardTopRow}>
+                            <View style={[styles.typeBadge, { backgroundColor: typeColor + '20' }]}>
+                                <Text style={[styles.typeText, { color: typeColor }]}>{item.caseType}</Text>
+                            </View>
+                            {item.caseNumber && (
+                                <View style={[styles.caseNumberBadge, { borderColor: caseNoColor + '50', backgroundColor: caseNoColor + '10' }]}>
+                                    <Text style={[styles.caseNumberLabel, { color: caseNoColor }]}>CASE NO.</Text>
+                                    <Text style={[styles.caseNumberText, { color: caseNoColor }]}>{item.caseNumber}</Text>
+                                </View>
+                            )}
                         </View>
-                        {item.caseNumber && (
-                            <View style={[styles.caseNumberBadge, { borderColor: caseNoColor + '50', backgroundColor: caseNoColor + '10' }]}>
-                                <Text style={[styles.caseNumberLabel, { color: caseNoColor }]}>CASE NO.</Text>
-                                <Text style={[styles.caseNumberText, { color: caseNoColor }]}>{item.caseNumber}</Text>
+
+                        <Text style={styles.caseName} numberOfLines={3}>{item.name}</Text>
+
+                        <View style={styles.clientRow}>
+                            <MaterialCommunityIcons name="account-tie" size={16} color={colors.textSecondary} />
+                            <Text style={styles.clientLabel}>Client:</Text>
+                            <Text style={styles.clientName} numberOfLines={1}>{clientName}</Text>
+                        </View>
+
+                        <View style={styles.divider} />
+
+                        {item.status === 'CLOSED' ? (
+                            <View style={styles.closedFooter}>
+                                <View style={styles.closedBadge}>
+                                    <MaterialCommunityIcons name="check-circle-outline" size={14} color={colors.textTertiary} />
+                                    <Text style={styles.closedText}>CASE CLOSED</Text>
+                                </View>
+                                <View style={styles.viewBadge}>
+                                    <Text style={styles.viewBadgeText}>VIEW</Text>
+                                    <MaterialCommunityIcons name="chevron-right" size={14} color={colors.accent} />
+                                </View>
+                            </View>
+                        ) : (
+                            <View style={styles.cardFooter}>
+                                <View style={styles.footerItem}>
+                                    <Text style={styles.footerLabel}>Stage</Text>
+                                    <View style={[styles.stageBadge, { backgroundColor: colors.accent + '15', borderColor: colors.accent + '30' }]}>
+                                        <Text style={[styles.stageText, { color: colors.accent }]}>{stageLabel}</Text>
+                                    </View>
+                                </View>
+
+                                <View style={styles.footerItemRight}>
+                                    <Text style={styles.footerLabel}>Next Deadline</Text>
+                                    {nextDeadline ? (
+                                        <View style={styles.deadlineContainer}>
+                                            <MaterialCommunityIcons name="clock-outline" size={12} color={colors.warning} style={{ marginRight: 4 }} />
+                                            <Text style={styles.deadlineText}>
+                                                {dayjs(nextDeadline.dueDate).format('DD MMM')}
+                                            </Text>
+                                        </View>
+                                    ) : (
+                                        <Text style={styles.noDeadline}>None</Text>
+                                    )}
+                                </View>
+
+                                <View style={styles.viewBadge}>
+                                    <Text style={styles.viewBadgeText}>VIEW</Text>
+                                    <MaterialCommunityIcons name="chevron-right" size={14} color={colors.accent} />
+                                </View>
                             </View>
                         )}
                     </View>
-
-                    {/* Main Title */}
-                    <Text style={styles.caseName} numberOfLines={3}>{item.name}</Text>
-
-                    {/* Client Info */}
-                    <View style={styles.clientRow}>
-                        <MaterialCommunityIcons name="account-tie" size={16} color={colors.textSecondary} />
-                        <Text style={styles.clientLabel}>Client:</Text>
-                        <Text style={styles.clientName} numberOfLines={1}>{clientName}</Text>
-                    </View>
-
-                    <View style={styles.divider} />
-
-                    {/* Footer: Stage & Deadline or Closed Status */}
-                    {item.status === 'CLOSED' ? (
-                        <View style={styles.closedFooter}>
-                            <View style={styles.closedBadge}>
-                                <MaterialCommunityIcons name="check-circle-outline" size={14} color={colors.textTertiary} />
-                                <Text style={styles.closedText}>CASE CLOSED</Text>
-                            </View>
-                            <View style={styles.viewBadge}>
-                                <Text style={styles.viewBadgeText}>VIEW</Text>
-                                <MaterialCommunityIcons name="chevron-right" size={14} color={colors.accent} />
-                            </View>
-                        </View>
-                    ) : (
-                        <View style={styles.cardFooter}>
-                            <View style={styles.footerItem}>
-                                <Text style={styles.footerLabel}>Stage</Text>
-                                <View style={[styles.stageBadge, { backgroundColor: colors.accent + '15', borderColor: colors.accent + '30' }]}>
-                                    <Text style={[styles.stageText, { color: colors.accent }]}>{stageLabel}</Text>
-                                </View>
-                            </View>
-
-                            <View style={styles.footerItemRight}>
-                                <Text style={styles.footerLabel}>Next Deadline</Text>
-                                {nextDeadline ? (
-                                    <View style={styles.deadlineContainer}>
-                                        <MaterialCommunityIcons name="clock-outline" size={12} color={colors.warning} style={{ marginRight: 4 }} />
-                                        <Text style={styles.deadlineText}>
-                                            {dayjs(nextDeadline.dueDate).format('DD MMM')}
-                                        </Text>
-                                    </View>
-                                ) : (
-                                    <Text style={styles.noDeadline}>None</Text>
-                                )}
-                            </View>
-
-                            <View style={styles.viewBadge}>
-                                <Text style={styles.viewBadgeText}>VIEW</Text>
-                                <MaterialCommunityIcons name="chevron-right" size={14} color={colors.accent} />
-                            </View>
-                        </View>
-                    )}
-                </View>
-            </TouchableOpacity>
+                </SmoothPressable>
+            </AnimatedListItem>
         );
-    };
+    }, [navigation, STATUS_COLORS, colors, deadlines]);
 
     const SORT_OPTIONS: { key: SortOption; label: string }[] = [
         { key: 'deadline', label: 'By Next Deadline' },
@@ -210,42 +212,67 @@ export const CaseListScreen: React.FC<Props> = ({ navigation }) => {
             <View style={styles.header}>
                 <View style={styles.headerTopRow}>
                     <Text style={styles.title}>Cases</Text>
-                    <TouchableOpacity
+                    <SmoothPressable
                         style={styles.eCourtsHeaderBtn}
                         onPress={() => setShowECourtsModal(true)}
-                        activeOpacity={0.8}
+                        haptic="medium"
+                        scaleTo={0.95}
                     >
                         <MaterialCommunityIcons name="scale-balance" size={16} color={colors.accent} />
                         <Text style={styles.eCourtsHeaderBtnText}>eCourts Sync</Text>
-                    </TouchableOpacity>
+                    </SmoothPressable>
                 </View>
 
-                <TextInput
-                    style={styles.searchInput}
-                    placeholder="Search cases, clients..."
-                    placeholderTextColor={colors.textTertiary}
-                    value={search}
-                    onChangeText={setSearch}
-                />
+                <View style={styles.searchBarContainer}>
+                    <Ionicons name="search" size={16} color={colors.accent} style={styles.searchBarIcon} />
+                    <TextInput
+                        style={styles.searchInput}
+                        placeholder="Search cases, clients, case no, sections..."
+                        placeholderTextColor={colors.textTertiary}
+                        value={search}
+                        onChangeText={setSearch}
+                        autoCapitalize="none"
+                        autoCorrect={false}
+                        returnKeyType="search"
+                    />
+                    {search.length > 0 && (
+                        <SmoothPressable
+                            onPress={() => setSearch('')}
+                            style={styles.searchClearBtn}
+                            haptic="light"
+                            scaleTo={0.9}
+                            hitSlop={8}
+                        >
+                            <Ionicons name="close-circle" size={18} color={colors.textTertiary} />
+                        </SmoothPressable>
+                    )}
+                </View>
 
                 <View style={styles.filtersRow}>
                     <View style={styles.statusFilters}>
                         {(['ALL', 'ACTIVE', 'PENDING', 'CLOSED'] as const).map(s => (
-                            <TouchableOpacity
+                            <SmoothPressable
                                 key={s}
                                 style={[styles.filterChip, filterStatus === s && styles.filterChipActive]}
                                 onPress={() => setFilterStatus(s)}
+                                haptic="selection"
+                                scaleTo={0.94}
                             >
                                 <Text style={[styles.filterText, filterStatus === s && styles.filterTextActive]}>
                                     {s}
                                 </Text>
-                            </TouchableOpacity>
+                            </SmoothPressable>
                         ))}
                     </View>
 
-                    <TouchableOpacity style={styles.sortButton} onPress={() => setShowSortModal(true)}>
+                    <SmoothPressable
+                        style={styles.sortButton}
+                        onPress={() => setShowSortModal(true)}
+                        haptic="light"
+                        scaleTo={0.95}
+                    >
                         <Text style={styles.sortButtonText}>Sort ▼</Text>
-                    </TouchableOpacity>
+                    </SmoothPressable>
                 </View>
             </View>
 
@@ -262,23 +289,25 @@ export const CaseListScreen: React.FC<Props> = ({ navigation }) => {
                         </Text>
                         {!search && (
                             <View style={{ gap: 10, alignItems: 'center' }}>
-                                <TouchableOpacity
+                                <SmoothPressable
                                     style={[
                                         styles.emptyActionBtn,
                                         {
-                                            backgroundColor: colors.safe + '15',
-                                            borderColor: colors.safe + '40',
+                                            backgroundColor: '#D4AF3715',
+                                            borderColor: '#D4AF3740',
                                         },
                                     ]}
                                     onPress={() => setShowECourtsModal(true)}
+                                    haptic="medium"
+                                    scaleTo={0.96}
                                 >
-                                    <MaterialCommunityIcons name="scale-balance" size={18} color={colors.safe} />
-                                    <Text style={[styles.emptyActionBtnText, { color: colors.safe }]}>
-                                        Import from eCourts India
+                                    <MaterialCommunityIcons name="image-search-outline" size={18} color="#D4AF37" />
+                                    <Text style={[styles.emptyActionBtnText, { color: '#D4AF37' }]}>
+                                        Scan & Import eCourts Screenshot
                                     </Text>
-                                </TouchableOpacity>
+                                </SmoothPressable>
 
-                                <TouchableOpacity
+                                <SmoothPressable
                                     style={[
                                         styles.emptyActionBtn,
                                         {
@@ -287,12 +316,14 @@ export const CaseListScreen: React.FC<Props> = ({ navigation }) => {
                                         },
                                     ]}
                                     onPress={() => loadMockData()}
+                                    haptic="medium"
+                                    scaleTo={0.96}
                                 >
                                     <MaterialCommunityIcons name="folder-open-outline" size={18} color={colors.accent} />
                                     <Text style={styles.emptyActionBtnText}>
                                         Load Sample TN Court Cases
                                     </Text>
-                                </TouchableOpacity>
+                                </SmoothPressable>
                             </View>
                         )}
                     </View>
@@ -303,15 +334,23 @@ export const CaseListScreen: React.FC<Props> = ({ navigation }) => {
                 initialNumToRender={10}
             />
 
-            <TouchableOpacity
+            <SmoothPressable
                 style={styles.fab}
                 onPress={() => navigation.navigate('AddCase')}
+                haptic="medium"
+                scaleTo={0.92}
             >
                 <MaterialCommunityIcons name="plus" size={24} color="white" />
                 <Text style={styles.fabText}>New Case</Text>
-            </TouchableOpacity>
+            </SmoothPressable>
 
-            <Modal visible={showSortModal} animationType="fade" transparent>
+            <Modal
+                visible={showSortModal}
+                animationType="fade"
+                transparent
+                statusBarTranslucent
+                onRequestClose={() => setShowSortModal(false)}
+            >
                 <TouchableOpacity
                     style={styles.modalOverlay}
                     activeOpacity={1}
@@ -404,15 +443,29 @@ const createStyles = (colors: any, spacing: any, layout: any) => StyleSheet.crea
         fontWeight: '700',
         fontSize: 13,
     },
-    searchInput: {
+    searchBarContainer: {
+        flexDirection: 'row',
+        alignItems: 'center',
         backgroundColor: colors.surface,
-        color: colors.textPrimary,
-        padding: spacing.m,
         borderRadius: layout.borderRadius,
-        fontSize: 16,
         borderWidth: 1,
         borderColor: colors.border,
+        paddingHorizontal: spacing.m,
         marginBottom: spacing.m,
+        height: 48,
+    },
+    searchBarIcon: {
+        marginRight: spacing.s,
+    },
+    searchInput: {
+        flex: 1,
+        color: colors.textPrimary,
+        fontSize: 14.5,
+        height: '100%',
+        padding: 0,
+    },
+    searchClearBtn: {
+        padding: 4,
     },
     filtersRow: {
         flexDirection: 'row',

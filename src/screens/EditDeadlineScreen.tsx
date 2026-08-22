@@ -7,28 +7,34 @@ import { SafeAreaView } from 'react-native-safe-area-context';
 import { NativeStackScreenProps } from '@react-navigation/native-stack';
 import { RootStackParamList } from '../navigation/types';
 import { useAppStore } from '../store/useAppStore';
-import { colors, spacing, layout } from '../theme/colors';
+import { useTheme } from '../theme/ThemeContext';
 import DateTimePicker from '@react-native-community/datetimepicker';
 import dayjs from 'dayjs';
 import { DeadlineType, DEADLINE_TYPES, UrgencyLevel, URGENCY_LEVELS } from '../models/Deadline';
 import { cancelNotifications, scheduleDeadlineNotifications } from '../services/notifications';
+import { Ionicons } from '@expo/vector-icons';
+import * as Haptics from 'expo-haptics';
+import { useToast } from '../context/ToastContext';
 
 type Props = NativeStackScreenProps<RootStackParamList, 'EditDeadline'>;
 
-const URGENCY_COLORS: Record<UrgencyLevel, string> = {
-    CRITICAL: colors.critical,
-    HIGH: colors.warning,
-    MEDIUM: colors.accent,
-    LOW: colors.safe,
-};
-
 export const EditDeadlineScreen: React.FC<Props> = ({ navigation, route }) => {
+    const { colors, spacing, layout } = useTheme();
     const { deadlineId } = route.params;
     const deadlines = useAppStore(state => state.deadlines);
     const cases = useAppStore(state => state.cases);
     const updateDeadline = useAppStore(state => state.updateDeadline);
     const deleteDeadline = useAppStore(state => state.deleteDeadline);
     const notificationPrefs = useAppStore(state => state.notificationPrefs);
+
+    const URGENCY_COLORS: Record<UrgencyLevel, string> = {
+        CRITICAL: colors.critical,
+        HIGH: colors.warning,
+        MEDIUM: colors.accent,
+        LOW: colors.safe,
+    };
+
+    const styles = createStyles(colors, spacing, layout);
 
     const currentDeadline = deadlines.find(d => d.id === deadlineId);
 
@@ -64,6 +70,9 @@ export const EditDeadlineScreen: React.FC<Props> = ({ navigation, route }) => {
 
     const caseName = cases.find(c => c.id === currentDeadline.caseId)?.name || 'Unknown Case';
 
+    const { showToast } = useToast();
+    const [isSaving, setIsSaving] = useState(false);
+
     const validate = (): boolean => {
         const newErrors: Record<string, string> = {};
         if (!title.trim()) newErrors.title = 'Title is required';
@@ -72,10 +81,17 @@ export const EditDeadlineScreen: React.FC<Props> = ({ navigation, route }) => {
     };
 
     const handleSave = async () => {
+        if (isSaving) return;
+
         if (!validate()) {
-            Alert.alert("Validation Error", "Please fill all required fields.");
+            showToast({
+                message: 'Please fill all required fields.',
+                type: 'error'
+            });
             return;
         }
+
+        setIsSaving(true);
 
         // Cancel old notifications
         if (currentDeadline.notificationIds.length > 0) {
@@ -109,6 +125,10 @@ export const EditDeadlineScreen: React.FC<Props> = ({ navigation, route }) => {
         }
 
         updateDeadline(updatedDeadline);
+        showToast({
+            message: 'Deadline updated successfully.',
+            type: 'success'
+        });
         navigation.goBack();
     };
 
@@ -127,6 +147,10 @@ export const EditDeadlineScreen: React.FC<Props> = ({ navigation, route }) => {
                             await cancelNotifications(currentDeadline.notificationIds);
                         }
                         deleteDeadline(deadlineId);
+                        showToast({
+                            message: 'Deadline deleted.',
+                            type: 'info'
+                        });
                         navigation.goBack();
                     }
                 }
@@ -144,12 +168,27 @@ export const EditDeadlineScreen: React.FC<Props> = ({ navigation, route }) => {
     return (
         <SafeAreaView style={styles.container} edges={['top', 'bottom']}>
             <View style={styles.header}>
-                <TouchableOpacity onPress={() => navigation.goBack()} style={[styles.headerButton, styles.cancelButton]}>
+                <TouchableOpacity
+                    onPress={() => {
+                        Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
+                        navigation.goBack();
+                    }}
+                    style={[styles.headerButton, styles.cancelButton]}
+                    activeOpacity={0.7}
+                >
+                    <Ionicons name="close" size={15} color={colors.critical} />
                     <Text style={[styles.headerButtonText, styles.cancelButtonText]}>Cancel</Text>
                 </TouchableOpacity>
                 <Text style={styles.headerTitle}>Edit Deadline</Text>
-                <TouchableOpacity onPress={handleSave} style={[styles.headerButton, styles.saveButton]}>
-                    <Text style={[styles.headerButtonText, styles.saveButtonText]}>Save</Text>
+                <TouchableOpacity
+                    onPress={handleSave}
+                    disabled={isSaving}
+                    style={[styles.headerButton, styles.saveButton, isSaving && { opacity: 0.6 }]}
+                    activeOpacity={0.85}
+                >
+                    <Text style={[styles.headerButtonText, styles.saveButtonText]}>
+                        {isSaving ? 'Saving...' : 'Save'}
+                    </Text>
                 </TouchableOpacity>
             </View>
 
@@ -272,7 +311,13 @@ export const EditDeadlineScreen: React.FC<Props> = ({ navigation, route }) => {
             </ScrollView>
 
             {/* Type Selection Modal */}
-            <Modal visible={showTypeModal} animationType="slide" transparent>
+            <Modal
+                visible={showTypeModal}
+                animationType="slide"
+                transparent
+                statusBarTranslucent
+                onRequestClose={() => setShowTypeModal(false)}
+            >
                 <View style={styles.modalOverlay}>
                     <View style={styles.modalContent}>
                         <Text style={styles.modalTitle}>Deadline Type</Text>
@@ -303,7 +348,7 @@ export const EditDeadlineScreen: React.FC<Props> = ({ navigation, route }) => {
     );
 };
 
-const styles = StyleSheet.create({
+const createStyles = (colors: any, spacing: any, layout: any) => StyleSheet.create({
     container: {
         flex: 1,
         backgroundColor: colors.background,
@@ -340,7 +385,15 @@ const styles = StyleSheet.create({
         alignItems: 'center',
     },
     cancelButton: {
-        backgroundColor: 'transparent',
+        backgroundColor: colors.critical + '14',
+        borderWidth: 1,
+        borderColor: colors.critical + '40',
+        flexDirection: 'row',
+        alignItems: 'center',
+        gap: 4,
+        paddingHorizontal: 12,
+        paddingVertical: 6,
+        borderRadius: 18,
     },
     saveButton: {
         backgroundColor: colors.accent,
@@ -351,11 +404,12 @@ const styles = StyleSheet.create({
         elevation: 4,
     },
     headerButtonText: {
-        fontSize: 14,
+        fontSize: 13,
         fontWeight: '600',
     },
     cancelButtonText: {
-        color: colors.textSecondary,
+        color: colors.critical,
+        fontWeight: '700',
     },
     saveButtonText: {
         color: '#FFFFFF',

@@ -3,7 +3,7 @@ import {
     View, Text, StyleSheet, TouchableOpacity, Linking, ScrollView,
     TextInput, Alert, Modal, KeyboardAvoidingView, Platform
 } from 'react-native';
-import { SafeAreaView } from 'react-native-safe-area-context';
+import { SafeAreaView, useSafeAreaInsets } from 'react-native-safe-area-context';
 import { MaterialCommunityIcons } from '@expo/vector-icons';
 import { LinearGradient } from 'expo-linear-gradient';
 import { NativeStackScreenProps } from '@react-navigation/native-stack';
@@ -18,6 +18,8 @@ import { SECTION_DATABASE } from '../data/legalSections';
 
 import { formatFileSize, shareDocument, shareMultipleDocuments, ShareableDoc } from '../services/documentStorage';
 import { PleadingGeneratorModal } from '../components/PleadingGeneratorModal';
+import { SmoothPressable } from '../components/SmoothPressable';
+import { useToast } from '../context/ToastContext';
 import 'react-native-get-random-values';
 import { v4 as uuidv4 } from 'uuid';
 import * as IntentLauncher from 'expo-intent-launcher';
@@ -30,6 +32,7 @@ type TabType = 'overview' | 'sections' | 'documents' | 'deadlines' | 'notes' | '
 
 export const CaseDetailScreen: React.FC<Props> = ({ route, navigation }) => {
     const { colors, spacing, layout, mode } = useTheme();
+    const { showToast } = useToast();
     const [activeTab, setActiveTab] = useState<TabType>('overview');
     const [noteModalVisible, setNoteModalVisible] = useState(false);
     const [sectionModalVisible, setSectionModalVisible] = useState(false);
@@ -88,7 +91,9 @@ export const CaseDetailScreen: React.FC<Props> = ({ route, navigation }) => {
     const updateCase = useAppStore(state => state.updateCase);
 
     const currentCase = cases.find(c => c.id === caseId);
-    const styles = createStyles(colors, spacing, layout);
+    const insets = useSafeAreaInsets();
+    const modalBottomPadding = insets.bottom > 0 ? insets.bottom + 16 : (Platform.OS === 'android' ? 28 : 16);
+    const styles = createStyles(colors, spacing, layout, modalBottomPadding);
 
     if (!currentCase) {
         return (
@@ -414,107 +419,75 @@ export const CaseDetailScreen: React.FC<Props> = ({ route, navigation }) => {
                     </View>
                 </View>
                 {/* Case Info Card */}
-                {/* Dynamic Header Content */}
-                {activeTab !== 'overview' ? (
-                    <View style={styles.minimalHeader}>
-                        <Text style={styles.minimalTitle} numberOfLines={1}>{currentCase.name}</Text>
+                {/* Unified Executive Header */}
+                <View style={styles.heroCard}>
+                    <Text style={styles.heroTitle} numberOfLines={2}>
+                        {currentCase.name}
+                    </Text>
+
+                    <View style={styles.heroGrid}>
                         {currentCase.caseNumber && (
-                            <View style={styles.minimalBadge}>
-                                <Text style={styles.minimalBadgeText}>CASE NO. {currentCase.caseNumber}</Text>
+                            <TouchableOpacity
+                                style={styles.caseNoChip}
+                                onPress={async () => {
+                                    await Clipboard.setStringAsync(currentCase.caseNumber!);
+                                    showToast({ message: `Copied: ${currentCase.caseNumber}`, type: 'success' });
+                                }}
+                                activeOpacity={0.7}
+                            >
+                                <MaterialCommunityIcons name="file-document-outline" size={13} color={colors.accent} />
+                                <Text style={styles.caseNoChipText}>{currentCase.caseNumber}</Text>
+                                <MaterialCommunityIcons name="content-copy" size={11} color={colors.textTertiary} />
+                            </TouchableOpacity>
+                        )}
+                        <View style={[styles.statusBadge, { backgroundColor: STATUS_COLORS[currentCase.status] + '18', borderColor: STATUS_COLORS[currentCase.status] + '50', borderWidth: 1 }]}>
+                            <View style={{ width: 6, height: 6, borderRadius: 3, backgroundColor: STATUS_COLORS[currentCase.status] }} />
+                            <Text style={[styles.statusText, { color: STATUS_COLORS[currentCase.status] }]}>{currentCase.status}</Text>
+                        </View>
+                        {currentCase.caseType && (
+                            <View style={styles.typeBadge}>
+                                <Text style={styles.typeBadgeText}>{currentCase.caseType}</Text>
                             </View>
                         )}
                     </View>
-                ) : (
-                    <>
-                        <View style={styles.heroCard}>
-                            <View style={styles.heroHeader}>
-                                <Text style={styles.heroTitle} numberOfLines={3}>{currentCase.name}</Text>
-                            </View>
+                </View>
 
-                            <View style={styles.heroGrid}>
-                                {currentCase.caseNumber && (
-                                    <View style={styles.heroItem}>
-                                        <Text style={styles.heroLabel}>CASE NO.</Text>
-                                        <View style={[styles.heroBadge, { backgroundColor: colors.accent + '15', borderColor: colors.accent + '35' }]}>
-                                            <MaterialCommunityIcons name="file-document-outline" size={13} color={colors.accent} />
-                                            <Text style={[styles.heroBadgeText, { color: colors.accent }]}>{currentCase.caseNumber}</Text>
-                                        </View>
-                                    </View>
-                                )}
-                                <View style={styles.heroItem}>
-                                    <Text style={styles.heroLabel}>STATUS</Text>
-                                    <View style={[styles.statusBadge, { backgroundColor: STATUS_COLORS[currentCase.status] + '18', borderColor: STATUS_COLORS[currentCase.status] + '50', borderWidth: 1, flexDirection: 'row', alignItems: 'center', gap: 5, paddingHorizontal: 9, paddingVertical: 4, borderRadius: 12 }]}>
-                                        <View style={{ width: 6, height: 6, borderRadius: 3, backgroundColor: STATUS_COLORS[currentCase.status] }} />
-                                        <Text style={[styles.statusText, { color: STATUS_COLORS[currentCase.status], fontWeight: '700', fontSize: 11 }]}>{currentCase.status}</Text>
-                                    </View>
-                                </View>
-                                <View style={styles.heroItem}>
-                                    <Text style={styles.heroLabel}>TYPE</Text>
-                                    <View style={[styles.heroInfo, { backgroundColor: colors.surfaceHighlight, paddingHorizontal: 10, paddingVertical: 4, borderRadius: 12, borderWidth: 1, borderColor: colors.border }]}>
-                                        <Text style={[styles.heroValue, { fontSize: 12, fontWeight: '700', color: colors.textPrimary }]}>{currentCase.caseType}</Text>
-                                    </View>
-                                </View>
-                            </View>
-
-                            {sections.length > 0 && (
-                                <View style={styles.heroFooter}>
-                                    <View style={styles.sectionRow}>
-                                        <MaterialCommunityIcons name="scale-balance" size={16} color={colors.accent} />
-                                        <Text style={styles.heroSectionText} numberOfLines={1}>
-                                            {sections.length} Applied Section{sections.length > 1 ? 's' : ''}: {sections.slice(0, 3).map(s => `${s.act} ${s.section}`).join(', ')}
-                                            {sections.length > 3 ? '...' : ''}
-                                        </Text>
-                                    </View>
-                                </View>
-                            )}
-                        </View>
-
-                        {/* Stage Progress */}
-                        <View style={styles.stageContainer}>
-                            <View style={{ flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginBottom: spacing.s }}>
-                                <Text style={styles.stageLabel}>CASE STAGE</Text>
-                                <View style={{ backgroundColor: colors.accent + '20', paddingHorizontal: 8, paddingVertical: 2, borderRadius: 8 }}>
-                                    <Text style={{ color: colors.accent, fontSize: 10, fontWeight: '700' }}>
-                                        {CASE_STAGES[currentStageIndex]?.label || currentCase.stage}
+                {/* Stage Progress Stepper */}
+                <View style={styles.stageContainer}>
+                    <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={{ gap: 6, paddingVertical: 2 }}>
+                        {CASE_STAGES.map((s, index) => {
+                            const isCurrent = s.value === currentCase.stage;
+                            const isCompleted = index < currentStageIndex;
+                            return (
+                                <TouchableOpacity
+                                    key={s.value}
+                                    style={[
+                                        styles.stagePill,
+                                        isCurrent && { backgroundColor: colors.accent + '20', borderColor: colors.accent, borderWidth: 1 },
+                                        isCompleted && { backgroundColor: colors.safe + '15', borderColor: colors.safe + '40', borderWidth: 1 },
+                                    ]}
+                                    onPress={() => handleStageChange(s.value)}
+                                    activeOpacity={0.7}
+                                >
+                                    <MaterialCommunityIcons
+                                        name={isCurrent ? 'record-circle' : isCompleted ? 'check-circle' : 'circle-outline'}
+                                        size={12}
+                                        color={isCurrent ? colors.accent : isCompleted ? colors.safe : colors.textTertiary}
+                                    />
+                                    <Text
+                                        style={[
+                                            styles.stagePillText,
+                                            isCurrent && { color: colors.accent, fontWeight: '700' },
+                                            isCompleted && { color: colors.safe, fontWeight: '600' },
+                                        ]}
+                                    >
+                                        {s.label}
                                     </Text>
-                                </View>
-                            </View>
-                            <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={{ gap: 8, paddingVertical: 2 }}>
-                                {CASE_STAGES.map((s, index) => {
-                                    const isCurrent = s.value === currentCase.stage;
-                                    const isCompleted = index < currentStageIndex;
-                                    return (
-                                        <TouchableOpacity
-                                            key={s.value}
-                                            style={[
-                                                styles.stagePill,
-                                                isCurrent && { backgroundColor: colors.accent + '20', borderColor: colors.accent, borderWidth: 1 },
-                                                isCompleted && { backgroundColor: colors.safe + '15', borderColor: colors.safe + '40', borderWidth: 1 },
-                                            ]}
-                                            onPress={() => handleStageChange(s.value)}
-                                            activeOpacity={0.7}
-                                        >
-                                            <MaterialCommunityIcons
-                                                name={isCurrent ? 'record-circle' : isCompleted ? 'check-circle' : 'circle-outline'}
-                                                size={13}
-                                                color={isCurrent ? colors.accent : isCompleted ? colors.safe : colors.textTertiary}
-                                            />
-                                            <Text
-                                                style={[
-                                                    styles.stagePillText,
-                                                    isCurrent && { color: colors.accent, fontWeight: '700' },
-                                                    isCompleted && { color: colors.safe, fontWeight: '600' },
-                                                ]}
-                                            >
-                                                {s.label}
-                                            </Text>
-                                        </TouchableOpacity>
-                                    );
-                                })}
-                            </ScrollView>
-                        </View>
-                    </>
-                )}
+                                </TouchableOpacity>
+                            );
+                        })}
+                    </ScrollView>
+                </View>
             </LinearGradient>
 
             <ConfirmationModal
@@ -544,28 +517,34 @@ export const CaseDetailScreen: React.FC<Props> = ({ route, navigation }) => {
                 {/* Overview Tab */}
                 {activeTab === 'overview' && (
                     <>
-                        {/* AI Paperbook Factory Card */}
+                        {/* 1. AI Legal Drafting Chambers Card */}
                         <View style={[styles.card, { backgroundColor: colors.accent + '12', borderColor: colors.accent + '35', borderWidth: 1.5 }]}>
-                            <View style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', marginBottom: spacing.s }}>
-                                <View style={{ flexDirection: 'row', alignItems: 'center', gap: 8 }}>
-                                    <MaterialCommunityIcons name="scale-balance" size={22} color={colors.accent} />
-                                    <Text style={[styles.cardTitle, { color: colors.accent, marginBottom: 0, fontSize: 13 }]}>
-                                        TAMIL NADU COURT PAPERBOOK
+                            <View style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', marginBottom: spacing.s, gap: 8 }}>
+                                <View style={{ flexDirection: 'row', alignItems: 'center', gap: 6, flex: 1, minWidth: 0 }}>
+                                    <MaterialCommunityIcons name="scale-balance" size={18} color={colors.accent} />
+                                    <Text
+                                        style={[styles.cardTitle, { color: colors.accent, marginBottom: 0, fontSize: 12.5, letterSpacing: 0.3 }]}
+                                        numberOfLines={1}
+                                        ellipsizeMode="tail"
+                                    >
+                                        PLEADING & DOC DRAFTER
                                     </Text>
                                 </View>
-                                <View style={{ backgroundColor: colors.accent + '25', paddingHorizontal: 8, paddingVertical: 2, borderRadius: 10 }}>
-                                    <Text style={{ color: colors.accent, fontSize: 10, fontWeight: '700' }}>BNSS / BNS</Text>
+                                <View style={{ backgroundColor: colors.accent + '22', paddingHorizontal: 7, paddingVertical: 2.5, borderRadius: 8, borderWidth: 1, borderColor: colors.accent + '40', flexShrink: 0 }}>
+                                    <Text style={{ color: colors.accent, fontSize: 9.5, fontWeight: '800', letterSpacing: 0.4 }}>BNSS / BNS</Text>
                                 </View>
                             </View>
-                            <Text style={{ color: colors.textSecondary, fontSize: 13, lineHeight: 18, marginBottom: spacing.m }}>
-                                Generate complete 5-document filing bundle (Index, Synopsis, Petition, Affidavit & Vakalatnama) adhering to Madras High Court formatting rules.
+                            <Text style={{ color: colors.textSecondary, fontSize: 12.5, lineHeight: 18, marginBottom: spacing.m }}>
+                                Draft court-ready filing bundles (Petitions, Affidavits, Notices & Vakalatnama) adhering to Madras High Court & District Court formatting rules.
                             </Text>
-                            <TouchableOpacity
+                            <SmoothPressable
                                 onPress={() => setPleadingModalVisible(true)}
                                 style={{
                                     borderRadius: 10,
                                     overflow: 'hidden',
                                 }}
+                                haptic="medium"
+                                scaleTo={0.97}
                             >
                                 <LinearGradient
                                     colors={[colors.accent, colors.primary]}
@@ -579,16 +558,16 @@ export const CaseDetailScreen: React.FC<Props> = ({ route, navigation }) => {
                                 >
                                     <MaterialCommunityIcons name="lightning-bolt" size={18} color="white" />
                                     <Text style={{ color: 'white', fontWeight: '700', fontSize: 14 }}>
-                                        Generate TN Court Paperbook (.docx)
+                                        Draft Court Pleading (.docx)
                                     </Text>
                                 </LinearGradient>
-                            </TouchableOpacity>
+                            </SmoothPressable>
                         </View>
 
-                        {/* Client Info Card */}
+                        {/* 2. Client Info Card */}
                         <View style={styles.card}>
                             <View style={styles.cardHeaderRow}>
-                                <Text style={styles.cardTitle}>CLIENT</Text>
+                                <Text style={styles.cardTitle}>CLIENT PROFILE</Text>
                                 <TouchableOpacity onPress={() => navigation.navigate('EditCase', { caseId })}>
                                     <Text style={styles.editLink}>Edit</Text>
                                 </TouchableOpacity>
@@ -647,90 +626,66 @@ export const CaseDetailScreen: React.FC<Props> = ({ route, navigation }) => {
                             </View>
                         </View>
 
-                        {/* Case Essentials - Grid Layout */}
+                        {/* 3. Case Essentials - Grid Layout */}
                         <View style={styles.card}>
                             <Text style={styles.cardTitle}>CASE ESSENTIALS</Text>
                             <View style={styles.essentialsGrid}>
                                 <View style={styles.essentialItem}>
-                                    <MaterialCommunityIcons name="bank" size={20} color={colors.textTertiary} style={styles.essentialIcon} />
+                                    <MaterialCommunityIcons name="bank" size={20} color={colors.accent} style={styles.essentialIcon} />
                                     <View style={{ flex: 1 }}>
                                         <Text style={styles.essentialLabel}>Court</Text>
                                         <Text style={styles.essentialValue}>{currentCase.courtName}</Text>
                                     </View>
                                 </View>
                                 <View style={styles.essentialItem}>
-                                    <MaterialCommunityIcons name="calendar-range" size={20} color={colors.textTertiary} style={styles.essentialIcon} />
+                                    <MaterialCommunityIcons name="calendar-range" size={20} color={colors.accent} style={styles.essentialIcon} />
                                     <View style={{ flex: 1 }}>
                                         <Text style={styles.essentialLabel}>Filing Date</Text>
                                         <Text style={styles.essentialValue}>{dayjs(currentCase.filingDate).format('DD MMM YYYY')}</Text>
                                     </View>
                                 </View>
-                                {currentCase.caseType && (
-                                    <View style={styles.essentialItem}>
-                                        <MaterialCommunityIcons name="gavel" size={20} color={colors.textTertiary} style={styles.essentialIcon} />
-                                        <View style={{ flex: 1 }}>
-                                            <Text style={styles.essentialLabel}>Case Type</Text>
-                                            <Text style={styles.essentialValue}>{currentCase.caseType}</Text>
-                                        </View>
-                                    </View>
-                                )}
                             </View>
 
                             {currentCase.description && (
                                 <View style={styles.descriptionContainer}>
-                                    <Text style={styles.descriptionLabel}>DESCRIPTION</Text>
+                                    <Text style={styles.descriptionLabel}>DESCRIPTION & FACTS BRIEF</Text>
                                     <Text style={styles.descriptionContent}>{currentCase.description}</Text>
                                 </View>
                             )}
                         </View>
 
-                        {/* Sections Preview */}
-                        {sections.length > 0 && (
-                            <View style={styles.card}>
-                                <Text style={styles.cardTitle}>APPLIED SECTIONS</Text>
-                                <View style={styles.sectionsPreview}>
-                                    {sections.slice(0, 3).map(s => (
-                                        <View key={s.id} style={styles.sectionChip}>
-                                            <Text style={styles.sectionChipText}>
-                                                {s.act} {s.section}{s.description ? ` - ${s.description}` : ''}
-                                            </Text>
+                        {/* 4. Applied Legal Sections */}
+                        <View style={styles.card}>
+                            <View style={styles.cardHeaderRow}>
+                                <Text style={styles.cardTitle}>APPLIED STATUTORY SECTIONS ({sections.length})</Text>
+                                <TouchableOpacity onPress={() => setSectionModalVisible(true)} style={styles.addSectionPill}>
+                                    <MaterialCommunityIcons name="plus" size={14} color={colors.accent} />
+                                    <Text style={styles.addSectionPillText}>Add</Text>
+                                </TouchableOpacity>
+                            </View>
+
+                            {sections.length === 0 ? (
+                                <Text style={styles.emptyText}>No statutory sections linked. Tap Add to add IPC/BNS sections.</Text>
+                            ) : (
+                                <View style={{ gap: 8 }}>
+                                    {sections.map(s => (
+                                        <View key={s.id} style={styles.overviewSectionCard}>
+                                            <View style={styles.overviewSectionHeader}>
+                                                <View style={styles.overviewSectionBadge}>
+                                                    <Text style={styles.overviewSectionBadgeText}>{s.act}</Text>
+                                                </View>
+                                                <Text style={styles.overviewSectionTitle}>Section {s.section}</Text>
+                                                <TouchableOpacity onPress={() => handleDeleteSection(s.id)} hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}>
+                                                    <MaterialCommunityIcons name="close-circle-outline" size={16} color={colors.textTertiary} />
+                                                </TouchableOpacity>
+                                            </View>
+                                            {s.description ? (
+                                                <Text style={styles.overviewSectionDesc}>{s.description}</Text>
+                                            ) : null}
                                         </View>
                                     ))}
-                                    {sections.length > 3 && (
-                                        <TouchableOpacity onPress={() => setActiveTab('sections')}>
-                                            <Text style={styles.moreLink}>+{sections.length - 3} more</Text>
-                                        </TouchableOpacity>
-                                    )}
                                 </View>
-                            </View>
-                        )}
-
-                        {/* Quick Stats */}
-                        <View style={styles.statsRow}>
-                            <TouchableOpacity style={styles.statCard} onPress={() => setActiveTab('documents')} activeOpacity={0.7}>
-                                <View style={[styles.statIconBadge, { backgroundColor: colors.accent + '18' }]}>
-                                    <MaterialCommunityIcons name="file-document-multiple-outline" size={18} color={colors.accent} />
-                                </View>
-                                <Text style={styles.statNumber}>{caseDocuments.length}</Text>
-                                <Text style={styles.statLabel}>Documents</Text>
-                                <Text style={styles.statViewText}>VIEW ›</Text>
-                            </TouchableOpacity>
-                            <TouchableOpacity style={styles.statCard} onPress={() => setActiveTab('deadlines')} activeOpacity={0.7}>
-                                <View style={[styles.statIconBadge, { backgroundColor: colors.warning + '18' }]}>
-                                    <MaterialCommunityIcons name="clock-alert-outline" size={18} color={colors.warning} />
-                                </View>
-                                <Text style={[styles.statNumber, { color: colors.warning }]}>{caseDeadlines.filter(d => !d.isCompleted).length}</Text>
-                                <Text style={styles.statLabel}>Pending</Text>
-                                <Text style={[styles.statViewText, { color: colors.warning }]}>VIEW ›</Text>
-                            </TouchableOpacity>
-                            <TouchableOpacity style={styles.statCard} onPress={() => setActiveTab('sections')} activeOpacity={0.7}>
-                                <View style={[styles.statIconBadge, { backgroundColor: colors.primary + '25' }]}>
-                                    <MaterialCommunityIcons name="scale-balance" size={18} color={colors.accent} />
-                                </View>
-                                <Text style={styles.statNumber}>{sections.length}</Text>
-                                <Text style={styles.statLabel}>Sections</Text>
-                                <Text style={styles.statViewText}>VIEW ›</Text>
-                            </TouchableOpacity>
+                            )}
                         </View>
                     </>
                 )}
@@ -771,20 +726,27 @@ export const CaseDetailScreen: React.FC<Props> = ({ route, navigation }) => {
                 {/* Documents Tab */}
                 {activeTab === 'documents' && (
                     <View>
-                        <View style={{ flexDirection: 'row', gap: 10, marginBottom: spacing.s }}>
+                        <View style={{ flexDirection: 'row', gap: 8, marginBottom: spacing.s }}>
                             <TouchableOpacity
-                                style={[styles.addBtn, { flex: 1, marginTop: 0 }]}
+                                style={[styles.addBtn, { flex: 1, marginTop: 0, paddingHorizontal: 6 }]}
                                 onPress={() => navigation.navigate('AddDocument', { caseId })}
                             >
-                                <MaterialCommunityIcons name="plus" size={18} color={colors.accent} />
-                                <Text style={styles.addBtnText}>Add Document</Text>
+                                <MaterialCommunityIcons name="plus" size={16} color={colors.accent} />
+                                <Text style={styles.addBtnText} numberOfLines={1}>Add Doc</Text>
                             </TouchableOpacity>
                             <TouchableOpacity
-                                style={[styles.addBtn, { flex: 1, marginTop: 0, backgroundColor: colors.accent + '15', borderColor: colors.accent + '40', borderWidth: 1 }]}
+                                style={[styles.addBtn, { flex: 1.2, marginTop: 0, backgroundColor: 'rgba(212, 175, 55, 0.12)', borderColor: 'rgba(212, 175, 55, 0.35)', borderWidth: 1, paddingHorizontal: 6 }]}
+                                onPress={() => navigation.navigate('ImageToPdf', { caseId })}
+                            >
+                                <MaterialCommunityIcons name="file-pdf-box" size={16} color="#D4AF37" />
+                                <Text style={[styles.addBtnText, { color: '#D4AF37', fontWeight: '700' }]} numberOfLines={1}>Images to PDF</Text>
+                            </TouchableOpacity>
+                            <TouchableOpacity
+                                style={[styles.addBtn, { flex: 1.1, marginTop: 0, backgroundColor: colors.accent + '15', borderColor: colors.accent + '40', borderWidth: 1, paddingHorizontal: 6 }]}
                                 onPress={() => setPleadingModalVisible(true)}
                             >
-                                <MaterialCommunityIcons name="scale-balance" size={18} color={colors.accent} />
-                                <Text style={[styles.addBtnText, { color: colors.accent, fontWeight: '700' }]}>AI Paperbook</Text>
+                                <MaterialCommunityIcons name="scale-balance" size={16} color={colors.accent} />
+                                <Text style={[styles.addBtnText, { color: colors.accent, fontWeight: '700' }]} numberOfLines={1}>AI Paperbook</Text>
                             </TouchableOpacity>
                         </View>
 
@@ -793,16 +755,19 @@ export const CaseDetailScreen: React.FC<Props> = ({ route, navigation }) => {
                             <View>
                                 {/* Search Bar */}
                                 <View style={styles.searchContainer}>
-                                    <MaterialCommunityIcons name="magnify" size={20} color={colors.textTertiary} style={styles.searchIcon} />
+                                    <MaterialCommunityIcons name="magnify" size={20} color={colors.accent} style={styles.searchIcon} />
                                     <TextInput
                                         style={styles.searchInput}
-                                        placeholder="Search documents..."
+                                        placeholder="Search documents by name, type, tag..."
                                         placeholderTextColor={colors.textTertiary}
                                         value={docSearchQuery}
                                         onChangeText={setDocSearchQuery}
+                                        autoCapitalize="none"
+                                        autoCorrect={false}
+                                        returnKeyType="search"
                                     />
                                     {docSearchQuery.length > 0 && (
-                                        <TouchableOpacity onPress={() => setDocSearchQuery('')}>
+                                        <TouchableOpacity onPress={() => setDocSearchQuery('')} style={{ padding: 4 }}>
                                             <MaterialCommunityIcons name="close-circle" size={18} color={colors.textTertiary} />
                                         </TouchableOpacity>
                                     )}
@@ -969,7 +934,13 @@ export const CaseDetailScreen: React.FC<Props> = ({ route, navigation }) => {
             </ScrollView>
 
             {/* Note Modal */}
-            <Modal visible={noteModalVisible} animationType="slide" transparent>
+            <Modal
+                visible={noteModalVisible}
+                animationType="slide"
+                transparent
+                statusBarTranslucent
+                onRequestClose={() => setNoteModalVisible(false)}
+            >
                 <View style={styles.modalOverlay}>
                     <View style={styles.modalContent}>
                         <Text style={styles.modalTitle}>Add Note</Text>
@@ -995,7 +966,13 @@ export const CaseDetailScreen: React.FC<Props> = ({ route, navigation }) => {
             </Modal>
 
             {/* Section Modal */}
-            <Modal visible={sectionModalVisible} animationType="slide" transparent>
+            <Modal
+                visible={sectionModalVisible}
+                animationType="slide"
+                transparent
+                statusBarTranslucent
+                onRequestClose={() => setSectionModalVisible(false)}
+            >
                 <KeyboardAvoidingView
                     behavior={Platform.OS === 'ios' ? 'padding' : 'height'}
                     style={{ flex: 1 }}
@@ -1052,7 +1029,13 @@ export const CaseDetailScreen: React.FC<Props> = ({ route, navigation }) => {
             />
 
             {/* Act Picker Modal */}
-            <Modal visible={showActPicker} animationType="fade" transparent>
+            <Modal
+                visible={showActPicker}
+                animationType="fade"
+                transparent
+                statusBarTranslucent
+                onRequestClose={() => setShowActPicker(false)}
+            >
                 <View style={styles.modalOverlay}>
                     <View style={styles.pickerModal}>
                         <Text style={styles.modalTitle}>Select Act</Text>
@@ -1077,7 +1060,7 @@ export const CaseDetailScreen: React.FC<Props> = ({ route, navigation }) => {
     );
 };
 
-const createStyles = (colors: any, spacing: any, layout: any) => StyleSheet.create({
+const createStyles = (colors: any, spacing: any, layout: any, modalBottomPadding: number = 24) => StyleSheet.create({
     container: { flex: 1, backgroundColor: colors.background },
     center: { flex: 1, justifyContent: 'center', alignItems: 'center', backgroundColor: colors.background },
     errorText: { color: colors.textSecondary },
@@ -1124,45 +1107,20 @@ const createStyles = (colors: any, spacing: any, layout: any) => StyleSheet.crea
         fontSize: 11,
         fontWeight: '600',
     },
-    caseName: { color: colors.textPrimary, fontSize: 26, fontWeight: '300', letterSpacing: -0.5 },
-    caseNumber: { color: colors.textSecondary, fontSize: 14, marginTop: 2 },
-    badges: { flexDirection: 'row', flexWrap: 'wrap', gap: spacing.xs, marginTop: spacing.m },
-    statusBadge: { paddingHorizontal: spacing.s, paddingVertical: 4, borderRadius: 4 },
-    statusText: { color: colors.background, fontSize: 11, fontWeight: 'bold' },
-    typeBadge: { backgroundColor: colors.surfaceHighlight, paddingHorizontal: spacing.s, paddingVertical: 4, borderRadius: 4 },
-    typeText: { color: colors.textSecondary, fontSize: 11, fontWeight: '600' },
-    sectionCountBadge: { backgroundColor: colors.accent + '20', paddingHorizontal: spacing.s, paddingVertical: 4, borderRadius: 4 },
-    sectionCountText: { color: colors.accent, fontSize: 11, fontWeight: '600' },
-    caseInfoCard: {
-        backgroundColor: colors.surface,
-        borderRadius: layout.borderRadius,
-        padding: spacing.m,
-        marginTop: spacing.m,
-        borderWidth: 1,
-        borderColor: colors.border,
-    },
-    caseInfoRow: {
+    statusBadge: {
         flexDirection: 'row',
-        justifyContent: 'space-between',
         alignItems: 'center',
-        paddingVertical: spacing.s,
-        borderBottomWidth: 1,
-        borderBottomColor: colors.border + '60',
+        gap: 5,
+        paddingHorizontal: 9,
+        paddingVertical: 5,
+        borderRadius: 8,
     },
-    caseInfoLabel: {
-        color: colors.textTertiary,
-        fontSize: 13,
-        fontWeight: '500',
+    statusText: {
+        fontSize: 11,
+        fontWeight: '700',
+        letterSpacing: 0.5,
     },
-    caseInfoValue: {
-        color: colors.textPrimary,
-        fontSize: 14,
-        fontWeight: '600',
-        flex: 1,
-        textAlign: 'right',
-        marginLeft: spacing.m,
-    },
-    stageContainer: { marginTop: spacing.l },
+    stageContainer: { marginTop: spacing.s, marginBottom: spacing.xs },
     stageLabel: { color: colors.textTertiary, fontSize: 10, fontWeight: '700', letterSpacing: 1 },
     stageTrack: { flexDirection: 'row', alignItems: 'center' },
     stagePill: {
@@ -1304,7 +1262,14 @@ const createStyles = (colors: any, spacing: any, layout: any) => StyleSheet.crea
     timelineDesc: { color: colors.textSecondary, fontSize: 13, marginTop: 2 },
     timelineDate: { color: colors.textTertiary, fontSize: 11, marginTop: 4 },
     modalOverlay: { flex: 1, backgroundColor: 'rgba(0,0,0,0.7)', justifyContent: 'flex-end' },
-    modalContent: { backgroundColor: colors.surface, borderTopLeftRadius: 20, borderTopRightRadius: 20, padding: spacing.l },
+    modalContent: {
+        backgroundColor: colors.surface,
+        borderTopLeftRadius: 20,
+        borderTopRightRadius: 20,
+        paddingHorizontal: spacing.l,
+        paddingTop: spacing.l,
+        paddingBottom: modalBottomPadding,
+    },
     modalTitle: { color: colors.textPrimary, fontSize: 20, fontWeight: '600', marginBottom: spacing.m },
     inputLabel: { color: colors.textSecondary, fontSize: 12, fontWeight: '600', marginTop: spacing.m, marginBottom: spacing.xs },
     input: { backgroundColor: colors.background, color: colors.textPrimary, padding: spacing.m, borderRadius: layout.borderRadius, fontSize: 16, borderWidth: 1, borderColor: colors.border },
@@ -1312,7 +1277,7 @@ const createStyles = (colors: any, spacing: any, layout: any) => StyleSheet.crea
     dropdown: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', backgroundColor: colors.background, padding: spacing.m, borderRadius: layout.borderRadius, borderWidth: 1, borderColor: colors.border },
     dropdownText: { color: colors.textPrimary, fontSize: 16 },
     noteInput: { backgroundColor: colors.background, color: colors.textPrimary, padding: spacing.m, borderRadius: layout.borderRadius, fontSize: 16, minHeight: 120, textAlignVertical: 'top', borderWidth: 1, borderColor: colors.border },
-    modalActions: { flexDirection: 'row', gap: spacing.m, marginTop: spacing.l, flexShrink: 0 },
+    modalActions: { flexDirection: 'row', gap: spacing.m, marginTop: spacing.l, marginBottom: Platform.OS === 'android' ? 6 : 0, flexShrink: 0 },
     modalBtn: { flex: 1, padding: spacing.m, borderRadius: layout.borderRadius, alignItems: 'center', borderWidth: 1, borderColor: colors.border },
     modalBtnPrimary: { backgroundColor: colors.accent, borderColor: colors.accent },
     modalBtnText: { color: colors.textSecondary, fontSize: 16, fontWeight: '600' },
@@ -1366,85 +1331,120 @@ const createStyles = (colors: any, spacing: any, layout: any) => StyleSheet.crea
         fontFamily: Platform.OS === 'ios' ? 'Courier' : 'monospace',
     },
     // New Hero Styles
+    // Sleek Executive Hero Card Styles
     heroCard: {
         backgroundColor: colors.surface,
         borderRadius: layout.borderRadiusLarge,
-        padding: spacing.l,
-        marginTop: spacing.m,
+        padding: spacing.m,
+        marginTop: spacing.s,
+        marginBottom: spacing.xs,
         borderWidth: 1,
         borderColor: colors.border,
         shadowColor: colors.accent,
-        shadowOffset: { width: 0, height: 8 },
-        shadowOpacity: 0.1,
-        shadowRadius: 16,
-        elevation: 6,
-    },
-    heroHeader: {
-        marginBottom: spacing.l,
+        shadowOffset: { width: 0, height: 4 },
+        shadowOpacity: 0.08,
+        shadowRadius: 10,
+        elevation: 3,
     },
     heroTitle: {
         color: colors.textPrimary,
-        fontSize: 22,
+        fontSize: 18,
         fontWeight: '700',
-        letterSpacing: -0.3,
-        lineHeight: 28,
+        letterSpacing: -0.2,
+        lineHeight: 24,
+        marginBottom: spacing.s,
     },
     heroGrid: {
         flexDirection: 'row',
+        alignItems: 'center',
         flexWrap: 'wrap',
-        gap: spacing.l,
+        gap: 8,
     },
-    heroItem: {
-        marginBottom: spacing.s,
-    },
-    heroLabel: {
-        color: colors.textTertiary,
-        fontSize: 10,
-        fontWeight: '700',
-        letterSpacing: 1,
-        marginBottom: 6,
-    },
-    heroBadge: {
+    caseNoChip: {
         flexDirection: 'row',
         alignItems: 'center',
+        backgroundColor: colors.accent + '15',
+        paddingHorizontal: 8,
+        paddingVertical: 5,
+        borderRadius: 8,
+        gap: 5,
+        borderWidth: 1,
+        borderColor: colors.accent + '35',
+    },
+    caseNoChipText: {
+        fontFamily: Platform.OS === 'ios' ? 'Courier' : 'monospace',
+        fontSize: 12,
+        color: colors.accent,
+        fontWeight: '700',
+    },
+    typeBadge: {
         backgroundColor: colors.surfaceHighlight,
         paddingHorizontal: 8,
+        paddingVertical: 5,
+        borderRadius: 8,
+        borderWidth: 1,
+        borderColor: colors.border,
+    },
+    typeBadgeText: {
+        fontSize: 11,
+        fontWeight: '700',
+        color: colors.textSecondary,
+        textTransform: 'uppercase',
+        letterSpacing: 0.5,
+    },
+    addSectionPill: {
+        flexDirection: 'row',
+        alignItems: 'center',
+        gap: 4,
+        backgroundColor: colors.accent + '18',
+        paddingHorizontal: 10,
         paddingVertical: 4,
-        borderRadius: 6,
-        gap: 6,
+        borderRadius: 12,
+        borderWidth: 1,
+        borderColor: colors.accent + '35',
+    },
+    addSectionPillText: {
+        color: colors.accent,
+        fontSize: 12,
+        fontWeight: '700',
+    },
+    overviewSectionCard: {
+        backgroundColor: colors.surfaceHighlight + '40',
+        borderRadius: layout.borderRadiusSmall,
+        padding: spacing.s + 2,
         borderWidth: 1,
         borderColor: colors.border + '50',
     },
-    heroBadgeText: {
-        fontFamily: Platform.OS === 'ios' ? 'Courier' : 'monospace',
-        fontSize: 13,
-        color: colors.textSecondary,
-        fontWeight: '600',
-    },
-    heroInfo: {
-
-    },
-    heroValue: {
-        color: colors.textPrimary,
-        fontSize: 15,
-        fontWeight: '500',
-    },
-    heroFooter: {
-        marginTop: spacing.m,
-        paddingTop: spacing.m,
-        borderTopWidth: 1,
-        borderTopColor: colors.border,
-    },
-    sectionRow: {
+    overviewSectionHeader: {
         flexDirection: 'row',
         alignItems: 'center',
         gap: 8,
     },
-    heroSectionText: {
+    overviewSectionBadge: {
+        backgroundColor: colors.accent + '25',
+        paddingHorizontal: 6,
+        paddingVertical: 2,
+        borderRadius: 4,
+        borderWidth: 1,
+        borderColor: colors.accent + '40',
+    },
+    overviewSectionBadgeText: {
         color: colors.accent,
+        fontSize: 10,
+        fontWeight: '800',
+    },
+    overviewSectionTitle: {
+        color: colors.textPrimary,
         fontSize: 13,
-        fontWeight: '500',
+        fontWeight: '700',
         flex: 1,
+    },
+    overviewSectionDesc: {
+        color: colors.textSecondary,
+        fontSize: 12,
+        marginTop: 4,
+        lineHeight: 16,
+        paddingLeft: 2,
     },
     // New Client & Details Styles
     cardHeaderRow: {

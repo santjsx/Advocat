@@ -18,7 +18,7 @@ import { NativeStackScreenProps } from '@react-navigation/native-stack';
 import { RootStackParamList } from '../navigation/types';
 import * as Haptics from 'expo-haptics';
 
-if (Platform.OS === 'android' && UIManager.setLayoutAnimationEnabledExperimental) {
+if (Platform.OS === 'android' && UIManager.setLayoutAnimationEnabledExperimental && !(global as any).nativeFabricUIManager) {
     UIManager.setLayoutAnimationEnabledExperimental(true);
 }
 
@@ -99,7 +99,7 @@ export const PrivacyPolicyScreen: React.FC<Props> = ({ navigation }) => {
         },
         content: {
             padding: spacing.m,
-            paddingBottom: 60,
+            paddingBottom: 140,
         },
         // Hero Shield Card
         heroBanner: {
@@ -456,6 +456,7 @@ export const PrivacyPolicyScreen: React.FC<Props> = ({ navigation }) => {
             title: '3. Legal Professional Privilege & Confidentiality',
             badge: 'Sec 126 BSA / IEA',
             icon: 'shield-lock-outline',
+            iconType: 'material',
             content: (
                 <>
                     <Text style={styles.paragraph}>
@@ -528,7 +529,7 @@ export const PrivacyPolicyScreen: React.FC<Props> = ({ navigation }) => {
                         You retain 100% legal and technical ownership of all data created in Advocat.
                     </Text>
                     <Bullet>
-                        <Text style={styles.boldText}>Full JSON Export:</Text> Export a complete, unencrypted JSON archive of your practice at any time via <Text style={styles.boldText}>Settings → Data Management → Export Backup</Text>.
+                        <Text style={styles.boldText}>Full JSON Export:</Text> Export a complete, unencrypted JSON archive of your practice at any time via <Text style={styles.boldText}>Settings → Data Management → Export Data</Text>.
                     </Bullet>
                     <Bullet>
                         <Text style={styles.boldText}>Complete Local Deletion:</Text> Uninstalling the app or clearing application data from Android settings permanently deletes all stored cases, documents, and preferences from your device.
@@ -536,10 +537,33 @@ export const PrivacyPolicyScreen: React.FC<Props> = ({ navigation }) => {
                 </>
             ),
         },
+        {
+            id: 'pdf-scanner-privacy',
+            num: '7',
+            title: '7. On-Device Image to PDF & Document Scanner',
+            badge: '100% Offline Processing',
+            icon: 'document-text-outline',
+            content: (
+                <>
+                    <Text style={styles.paragraph}>
+                        Advocat includes a native <Text style={styles.boldText}>Image to PDF Converter & Scanner</Text> for assembling court annexures, FIR copies, and judicial records.
+                    </Text>
+                    <Bullet>
+                        <Text style={styles.boldText}>Zero Cloud Uploads:</Text> All image rendering, aspect-ratio scaling, page margins, and PDF compilation execute 100% locally on your device's native CPU.
+                    </Bullet>
+                    <Bullet>
+                        <Text style={styles.boldText}>No Image Caching on Remote Servers:</Text> Selected photographs from your camera or gallery are processed entirely in sandboxed volatile memory and saved only to your designated case file or local gallery.
+                    </Bullet>
+                    <Callout type="safe" title="⚖️ Annexure Confidentiality Guarantee">
+                        Your confidential evidence documents, witness photos, and court exhibits never touch third-party servers or external OCR APIs.
+                    </Callout>
+                </>
+            ),
+        },
     ];
 
     return (
-        <SafeAreaView style={styles.container}>
+        <SafeAreaView style={styles.container} edges={['top', 'bottom']}>
             {/* Header */}
             <View style={styles.header}>
                 <TouchableOpacity

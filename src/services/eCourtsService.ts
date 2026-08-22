@@ -344,7 +344,7 @@ export const fetchECourtsByCaseNumber = async (
     };
 };
 
-// Convert eCourts Result to Native Advocat Objects
+// Convert eCourts Result to Native Advocat Objects (Bulletproof against partial or missing data)
 export const convertECourtsToAdvocatCase = (
     result: ECourtsCaseResult
 ): {
@@ -356,12 +356,22 @@ export const convertECourtsToAdvocatCase = (
     const caseId = uuidv4();
     const now = new Date().toISOString();
 
+    const petitionerName = result?.petitioner?.name || 'Petitioner';
+    const respondentName = result?.respondent?.name || 'Respondent';
+    const courtName = result?.courtName || 'Court of Competent Jurisdiction';
+    const caseNumber = result?.caseNumber || result?.cnr || 'Imported Case';
+    const caseTitle = result?.caseTitle || `${petitionerName} vs. ${respondentName}`;
+    const caseType: CaseType = (result?.caseCategory as CaseType) || 'CIVIL';
+    const stage: CaseStage = result?.stage || 'PLEADING';
+    const status: CaseStatus = result?.status || 'ACTIVE';
+
     // 1. Legal Sections
-    const sections: LegalSection[] = result.sections.map(s => ({
+    const rawSections = Array.isArray(result?.sections) ? result.sections : [];
+    const sections: LegalSection[] = rawSections.map(s => ({
         id: uuidv4(),
-        act: s.act,
-        section: s.section,
-        description: s.description,
+        act: (s?.act as LegalActType) || 'OTHER',
+        section: s?.section || '',
+        description: s?.description || '',
         isChargeSheet: false,
     }));
 
@@ -372,31 +382,31 @@ export const convertECourtsToAdvocatCase = (
     timeline.push({
         id: uuidv4(),
         type: 'CASE_CREATED',
-        title: `Filed at ${result.courtName}`,
-        description: `Filing No: ${result.filingNumber || result.caseNumber} registered on ${result.registrationDate || result.filingDate}. Bench: ${result.bench || 'Regular Bench'}.`,
-        date: result.filingDate ? new Date(result.filingDate).toISOString() : now,
+        title: `Filed at ${courtName}`,
+        description: `Filing No: ${result?.filingNumber || caseNumber} registered on ${result?.registrationDate || result?.filingDate || 'Registry'}. Bench: ${result?.bench || 'Regular Bench'}.`,
+        date: result?.filingDate ? new Date(result.filingDate).toISOString() : now,
     });
 
     // Past hearings
-    if (result.hearings && result.hearings.length > 0) {
+    if (Array.isArray(result?.hearings) && result.hearings.length > 0) {
         result.hearings.forEach(h => {
             timeline.push({
                 id: uuidv4(),
                 type: 'HEARING_SCHEDULED',
-                title: h.orderTitle || `Court Proceeding (${h.courtHall || 'Court Hall'})`,
-                description: `${h.business || 'Case called.'}${h.judge ? ` [${h.judge}]` : ''}`,
-                date: h.date ? new Date(h.date).toISOString() : now,
+                title: h?.orderTitle || `Court Proceeding (${h?.courtHall || 'Court Hall'})`,
+                description: `${h?.business || 'Case called.'}${h?.judge ? ` [${h.judge}]` : ''}`,
+                date: h?.date ? new Date(h.date).toISOString() : now,
             });
         });
     }
 
     // 3. Deadline (Next Hearing)
     let deadline: Deadline | undefined;
-    if (result.nextHearing && result.nextHearing.date) {
-        // Determine urgency
-        const daysUntil = Math.ceil(
-            (new Date(result.nextHearing.date).getTime() - Date.now()) / (1000 * 60 * 60 * 24)
-        );
+    if (result?.nextHearing?.date) {
+        const hearingDate = new Date(result.nextHearing.date);
+        const validDate = !isNaN(hearingDate.getTime()) ? hearingDate.toISOString() : now;
+
+        const daysUntil = Math.ceil((new Date(validDate).getTime() - Date.now()) / (1000 * 60 * 60 * 24));
         let urgency: UrgencyLevel = 'MEDIUM';
         if (daysUntil <= 3) urgency = 'CRITICAL';
         else if (daysUntil <= 7) urgency = 'HIGH';
@@ -405,10 +415,10 @@ export const convertECourtsToAdvocatCase = (
         deadline = {
             id: uuidv4(),
             caseId,
-            title: `Court Hearing - ${result.caseNumber}`,
+            title: `Court Hearing - ${caseNumber}`,
             type: 'HEARING',
-            description: `${result.nextHearing.purpose} (${result.courtName} - ${result.nextHearing.courtHall || result.courtHall || ''})`,
-            dueDate: new Date(result.nextHearing.date).toISOString(),
+            description: `${result.nextHearing.purpose || 'Hearing'} (${courtName} - ${result.nextHearing.courtHall || result?.courtHall || ''})`,
+            dueDate: validDate,
             urgency,
             isCompleted: false,
             notificationIds: [],
@@ -420,22 +430,22 @@ export const convertECourtsToAdvocatCase = (
     // 4. Native Case Object
     const newCase: Case = {
         id: caseId,
-        name: result.caseTitle,
-        caseNumber: result.caseNumber,
-        courtName: result.courtName,
+        name: caseTitle,
+        caseNumber,
+        courtName,
         client: {
-            name: result.petitioner.name,
-            phone: result.petitioner.phone || '',
-            address: result.petitioner.address || '',
-            notes: `Advocate on Record: ${result.petitioner.advocate || 'N/A'}\nRespondent: ${result.respondent.name} (${result.respondent.advocate || ''})`,
+            name: petitionerName,
+            phone: result?.petitioner?.phone || '',
+            address: result?.petitioner?.address || '',
+            notes: `Advocate on Record: ${result?.petitioner?.advocate || 'N/A'}\nRespondent: ${respondentName} (${result?.respondent?.advocate || ''})`,
         },
-        clientName: result.petitioner.name,
-        clientPhone: result.petitioner.phone || '',
-        caseType: result.caseCategory,
-        stage: result.stage,
-        status: result.status,
-        description: `Imported from eCourts India.\nCNR: ${formatCNRDisplay(result.cnr)}\nCourt: ${result.courtName}\nBench: ${result.bench || 'N/A'}\nPresiding Judge: ${result.presidingJudge || 'N/A'}\n${result.firDetails ? `FIR: ${result.firDetails.firNumber} at ${result.firDetails.policeStation}` : ''}`,
-        filingDate: result.filingDate,
+        clientName: petitionerName,
+        clientPhone: result?.petitioner?.phone || '',
+        caseType,
+        stage,
+        status,
+        description: `Imported from eCourts Screenshot Ingestion.\nCNR: ${result?.cnr ? formatCNRDisplay(result.cnr) : 'N/A'}\nCourt: ${courtName}\nBench: ${result?.bench || 'N/A'}\nPresiding Judge: ${result?.presidingJudge || 'N/A'}\n${result?.firDetails ? `FIR: ${result.firDetails.firNumber} at ${result.firDetails.policeStation}` : ''}`,
+        filingDate: result?.filingDate || now,
         sections,
         timeline,
         notes: [],

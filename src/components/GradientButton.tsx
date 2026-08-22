@@ -1,8 +1,8 @@
-import React from 'react';
-import { TouchableOpacity, Text, StyleSheet, ViewStyle, TextStyle } from 'react-native';
+import React, { useMemo } from 'react';
+import { Text, StyleSheet, ViewStyle } from 'react-native';
 import { LinearGradient } from 'expo-linear-gradient';
-import * as Haptics from 'expo-haptics';
 import { useTheme } from '../theme/ThemeContext';
+import { SmoothPressable } from './SmoothPressable';
 
 interface Props {
     title: string;
@@ -21,7 +21,7 @@ export const GradientButton: React.FC<Props> = ({
 }) => {
     const { colors, spacing, layout, mode } = useTheme();
 
-    const getGradientColors = (): [string, string] => {
+    const gradientColors: [string, string] = useMemo(() => {
         if (disabled) {
             return [colors.textTertiary, colors.textMuted];
         }
@@ -38,9 +38,9 @@ export const GradientButton: React.FC<Props> = ({
             default:
                 return [colors.accent, colors.accent];
         }
-    };
+    }, [disabled, variant, mode, colors]);
 
-    const styles = StyleSheet.create({
+    const styles = useMemo(() => StyleSheet.create({
         container: {
             borderRadius: layout.borderRadius,
             overflow: 'hidden',
@@ -60,22 +60,18 @@ export const GradientButton: React.FC<Props> = ({
         disabledText: {
             color: colors.textMuted,
         },
-    });
-
-    const handlePress = () => {
-        Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
-        onPress();
-    };
+    }), [colors, spacing, layout, variant]);
 
     return (
-        <TouchableOpacity
-            onPress={handlePress}
+        <SmoothPressable
+            onPress={onPress}
             disabled={disabled}
-            activeOpacity={0.8}
             style={[styles.container, style]}
+            haptic="medium"
+            scaleTo={0.97}
         >
             <LinearGradient
-                colors={getGradientColors()}
+                colors={gradientColors}
                 start={{ x: 0, y: 0 }}
                 end={{ x: 1, y: 0 }}
                 style={styles.gradient}
@@ -84,6 +80,6 @@ export const GradientButton: React.FC<Props> = ({
                     {title}
                 </Text>
             </LinearGradient>
-        </TouchableOpacity>
+        </SmoothPressable>
     );
 };

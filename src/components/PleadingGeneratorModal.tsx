@@ -35,7 +35,8 @@ import {
 } from '../models/Pleading';
 import { generatePleadingPaperbook } from '../services/aiPleadingService';
 import { buildMadrasHCPaperbookDocx, savePaperbookDocxFile } from '../services/paperbookDocxService';
-import { shareDocument } from '../services/documentStorage';
+import { shareDocument, openInMsWord } from '../services/documentStorage';
+import { SmoothPressable } from './SmoothPressable';
 import { useAppStore } from '../store/useAppStore';
 import { v4 as uuidv4 } from 'uuid';
 
@@ -118,6 +119,40 @@ export const PleadingGeneratorModal: React.FC<Props> = ({
     const toastOpacity = useRef(new Animated.Value(0)).current;
     const toastTranslateY = useRef(new Animated.Value(-20)).current;
 
+    // Chamber Generation Animations
+    const generatingProgressAnim = useRef(new Animated.Value(0.25)).current;
+    const pulseGlowAnim = useRef(new Animated.Value(0.95)).current;
+
+    React.useEffect(() => {
+        if (step === 'GENERATING') {
+            Animated.loop(
+                Animated.sequence([
+                    Animated.timing(pulseGlowAnim, {
+                        toValue: 1.08,
+                        duration: 1100,
+                        useNativeDriver: true,
+                    }),
+                    Animated.timing(pulseGlowAnim, {
+                        toValue: 0.95,
+                        duration: 1100,
+                        useNativeDriver: true,
+                    }),
+                ])
+            ).start();
+        }
+    }, [step]);
+
+    React.useEffect(() => {
+        if (step === 'GENERATING') {
+            Animated.spring(generatingProgressAnim, {
+                toValue: currentStepIndex / 4,
+                tension: 65,
+                friction: 10,
+                useNativeDriver: false,
+            }).start();
+        }
+    }, [currentStepIndex, step]);
+
     const showToast = (message: string, type: 'success' | 'info' | 'error' = 'success') => {
         setToastMessage(message);
         setToastType(type);
@@ -198,7 +233,7 @@ export const PleadingGeneratorModal: React.FC<Props> = ({
     const formattedBarEnrolment = useMemo(() => {
         const raw = advocateProfile.barEnrolment?.trim();
         if (!raw || raw === 'MS/       /20' || raw === 'MS/       /20  ' || raw === 'MS/' || raw.includes('       ')) {
-            return 'Bar Council of TN & PY • Enrolled';
+            return 'Tamil Nadu Bar Council • Enrolled';
         }
         return raw;
     }, [advocateProfile.barEnrolment]);
@@ -278,6 +313,20 @@ export const PleadingGeneratorModal: React.FC<Props> = ({
         }
     };
 
+    const handleOpenWord = async () => {
+        if (!generatedDocxUri) {
+            Alert.alert('Document not ready', 'Please generate the paperbook first.');
+            return;
+        }
+        try {
+            Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium);
+            showToast('Opening in Microsoft Word...', 'info');
+            await openInMsWord(generatedDocxUri, generatedDocxName || 'Court_Document.docx');
+        } catch (e: any) {
+            Alert.alert('Word Launch Error', e?.message || 'Could not launch MS Word.');
+        }
+    };
+
     const handleSaveToCase = async () => {
         if (!generatedDocxUri || !generatedDocxName) return;
 
@@ -349,9 +398,309 @@ export const PleadingGeneratorModal: React.FC<Props> = ({
         }
     };
 
+    const renderFormattedLegalDocument = (text: string) => {
+        if (!text) return null;
+
+        const lines = text.split('\n');
+
+        return (
+            <View style={styles.documentBody}>
+                {lines.map((rawLine, idx) => {
+                    const line = rawLine.trim();
+
+                    if (!line) {
+                        return <View key={`spacer-${idx}`} style={{ height: 6 }} />;
+                    }
+
+                    // Clean out markdown bold asterisks
+                    const cleanText = line.replace(/\*\*/g, '').trim();
+
+                    // 1. Primary Court Heading (e.g., IN THE HIGH COURT OF JUDICATURE AT MADRAS)
+                    const isMainCourtHeading =
+                        cleanText.toUpperCase().startsWith('IN THE HIGH COURT') ||
+                        cleanText.toUpperCase().startsWith('IN THE SUPREME COURT') ||
+                        cleanText.toUpperCase().startsWith('IN THE COURT OF') ||
+                        cleanText.toUpperCase().startsWith('BEFORE THE HON\'BLE') ||
+                        cleanText.toUpperCase().startsWith('BEFORE THE');
+
+                    if (isMainCourtHeading) {
+                        return (
+                            <Text key={`main-head-${idx}`} style={styles.courtMainTitle}>
+                                {cleanText}
+                            </Text>
+                        );
+                    }
+
+                    // 2. Jurisdiction Sub-heading (e.g., (CRIMINAL / WRIT / APPELLATE JURISDICTION))
+                    const isJurisdiction =
+                        cleanText.startsWith('(CRIMINAL') ||
+                        cleanText.startsWith('(APPELLATE') ||
+                        cleanText.startsWith('(CIVIL') ||
+                        cleanText.startsWith('(SPECIAL') ||
+                        cleanText.startsWith('(EXTRAORDINARY') ||
+                        cleanText.startsWith('(WRIT') ||
+                        cleanText.toUpperCase().includes('JURISDICTION)');
+
+                    if (isJurisdiction) {
+                        return (
+                            <Text key={`juris-${idx}`} style={styles.courtJurisdictionTitle}>
+                                {cleanText}
+                            </Text>
+                        );
+                    }
+
+                    // 3. Case Number Heading (e.g., CRL.O.P. NO. 18492 OF 2026)
+                    const isCaseNumber =
+                        cleanText.toUpperCase().startsWith('CRL.M.P.') ||
+                        cleanText.toUpperCase().startsWith('CRL.O.P.') ||
+                        cleanText.toUpperCase().startsWith('W.P.') ||
+                        cleanText.toUpperCase().startsWith('O.S.') ||
+                        cleanText.toUpperCase().startsWith('C.C.') ||
+                        cleanText.startsWith('(In Crime') ||
+                        cleanText.startsWith('(Crime No.') ||
+                        cleanText.toUpperCase().startsWith('BAIL APPLICATION') ||
+                        cleanText.toUpperCase().startsWith('M.P. NO.');
+
+                    if (isCaseNumber) {
+                        return (
+                            <Text key={`case-num-${idx}`} style={styles.courtCaseNumberTitle}>
+                                {cleanText}
+                            </Text>
+                        );
+                    }
+
+                    // 4. Centered Versus divider
+                    const isVersus =
+                        cleanText.toLowerCase() === 'versus' ||
+                        cleanText.toLowerCase() === '-versus-' ||
+                        cleanText === '-Vs-' ||
+                        cleanText === '— VERSUS —' ||
+                        cleanText === '... VERSUS ...' ||
+                        cleanText === '-VS-' ||
+                        cleanText === 'VS.' ||
+                        cleanText === 'V.';
+
+                    if (isVersus) {
+                        return (
+                            <View key={`vs-${idx}`} style={styles.versusContainer}>
+                                <View style={styles.versusLine} />
+                                <Text style={styles.versusText}>— VERSUS —</Text>
+                                <View style={styles.versusLine} />
+                            </View>
+                        );
+                    }
+
+                    // 5. Right-Aligned Role (... Petitioner / Accused / Respondent)
+                    const isRole =
+                        cleanText.includes('... Petitioner') ||
+                        cleanText.includes('... Respondent') ||
+                        cleanText.includes('... Accused') ||
+                        cleanText.includes('... Complainant') ||
+                        cleanText.includes('... Defendant') ||
+                        cleanText.includes('... Plaintiff') ||
+                        cleanText.includes('... Appellant') ||
+                        cleanText.includes('... Deponent');
+
+                    if (isRole) {
+                        return (
+                            <View key={`role-${idx}`} style={styles.rightAlignedRoleContainer}>
+                                <Text style={styles.roleText}>{cleanText}</Text>
+                            </View>
+                        );
+                    }
+
+                    // 6. Stamp Boxes (e.g. [ADVOCATES' WELFARE FUND STAMP: ₹30 / ₹100])
+                    const isStampBox =
+                        cleanText.startsWith('[ADVOCATES\' WELFARE FUND STAMP') ||
+                        cleanText.startsWith('[COURT FEE STAMP') ||
+                        cleanText.startsWith('[WELFARE FUND STAMP');
+
+                    if (isStampBox) {
+                        return (
+                            <View key={`stamp-${idx}`} style={styles.stampPlaceholderCard}>
+                                <MaterialCommunityIcons name="stamper" size={15} color="#D4AF37" />
+                                <Text style={styles.stampPlaceholderText}>{cleanText.replace(/[\[\]]/g, '')}</Text>
+                            </View>
+                        );
+                    }
+
+                    // 7. Dual Signature Row (Petitioner on left, Counsel on right)
+                    const isDualSignature =
+                        (cleanText.includes('Petitioner') && cleanText.includes('Counsel for Petitioner')) ||
+                        (cleanText.includes('SIGNATURE OF CLIENT') && cleanText.includes('ACCEPTED & SIGNED BY COUNSEL')) ||
+                        (cleanText.includes('DEPONENT') && cleanText.includes('BEFORE ME'));
+
+                    if (isDualSignature) {
+                        // Extract left and right labels
+                        let leftLabel = 'Petitioner.';
+                        let rightLabel = 'Counsel for Petitioner.';
+
+                        if (cleanText.includes('SIGNATURE OF CLIENT')) {
+                            leftLabel = 'SIGNATURE OF CLIENT\n(Petitioner / Accused)';
+                            rightLabel = 'ACCEPTED & SIGNED BY COUNSEL';
+                        } else if (cleanText.includes('DEPONENT') && cleanText.includes('BEFORE ME')) {
+                            leftLabel = 'DEPONENT / PETITIONER';
+                            rightLabel = 'BEFORE ME\nADVOCATE / NOTARY PUBLIC';
+                        }
+
+                        return (
+                            <View key={`dual-sig-${idx}`} style={styles.dualSignatureContainer}>
+                                <View style={styles.signatureColLeft}>
+                                    <View style={styles.signatureLine} />
+                                    <Text style={styles.signatureColText}>{leftLabel}</Text>
+                                </View>
+                                <View style={styles.signatureColRight}>
+                                    <View style={styles.signatureLine} />
+                                    <Text style={styles.signatureColTextRight}>{rightLabel}</Text>
+                                </View>
+                            </View>
+                        );
+                    }
+
+                    // 8. Centered Major Pleading Header Banner (e.g. PETITION, AFFIDAVIT, SYNOPSIS, PRAYER, VERIFICATION, VAKALATNAMA)
+                    const isMajorSection =
+                        cleanText.toUpperCase().startsWith('MEMORANDUM OF') ||
+                        cleanText.toUpperCase().startsWith('PETITION UNDER') ||
+                        cleanText.toUpperCase().startsWith('SUPPORTING VERIFICATION AFFIDAVIT') ||
+                        cleanText.toUpperCase().startsWith('AFFIDAVIT') ||
+                        cleanText.toUpperCase().startsWith('SYNOPSIS') ||
+                        cleanText.toUpperCase().startsWith('VAKALATNAMA') ||
+                        cleanText.toUpperCase().startsWith('PRAYER') ||
+                        cleanText.toUpperCase().startsWith('VERIFICATION') ||
+                        cleanText.toUpperCase().startsWith('MEMO OF GROUNDS') ||
+                        cleanText.toUpperCase().startsWith('LIST OF DOCUMENTS') ||
+                        cleanText.toUpperCase().startsWith('DOCKET / BACKSHEET');
+
+                    if (isMajorSection) {
+                        return (
+                            <View key={`plead-title-${idx}`} style={styles.petitionTitleContainer}>
+                                <Text style={styles.petitionTitleText}>{cleanText}</Text>
+                            </View>
+                        );
+                    }
+
+                    // 9. IN THE MATTER OF:
+                    if (cleanText.toUpperCase().startsWith('IN THE MATTER OF:')) {
+                        return (
+                            <View key={`matter-${idx}`} style={styles.matterOfContainer}>
+                                <Text style={styles.matterOfText}>IN THE MATTER OF:</Text>
+                            </View>
+                        );
+                    }
+
+                    // 10. Formal Opening Salutations
+                    const isSalutation =
+                        cleanText.includes('most respectfully begs to submit as follows:') ||
+                        cleanText.includes('respectfully submits as follows:') ||
+                        cleanText.includes('do hereby solemnly affirm and sincerely state as follows:');
+
+                    if (isSalutation) {
+                        return (
+                            <View key={`salutation-${idx}`} style={styles.salutationContainer}>
+                                <Text style={styles.salutationText}>{cleanText}</Text>
+                            </View>
+                        );
+                    }
+
+                    // 11. Dated at / Verified at lines
+                    const isDatedLine =
+                        cleanText.startsWith('Dated at') ||
+                        cleanText.startsWith('Verified at') ||
+                        cleanText.startsWith('Solemnly affirmed at') ||
+                        cleanText.startsWith('Executed by me at');
+
+                    if (isDatedLine) {
+                        return (
+                            <Text key={`dated-${idx}`} style={styles.datedAtText}>
+                                {cleanText}
+                            </Text>
+                        );
+                    }
+
+                    // 12. Sub-clauses / Prayer Bullets (e.g. a) , (a) , (i) )
+                    const subClauseMatch = cleanText.match(/^(\([a-z0-9ivx]+\)|[a-z0-9]\))\s+(.*)$/i);
+                    if (subClauseMatch) {
+                        const [, clauseNum, rest] = subClauseMatch;
+                        const parts = rest.split('**');
+                        return (
+                            <View key={`sub-clause-${idx}`} style={styles.prayerClauseRow}>
+                                <Text style={styles.prayerBullet}>{clauseNum}</Text>
+                                <Text style={styles.prayerClauseText}>
+                                    {parts.map((p, pIdx) => (
+                                        <Text key={pIdx} style={pIdx % 2 === 1 ? styles.legalBoldSpan : undefined}>
+                                            {p}
+                                        </Text>
+                                    ))}
+                                </Text>
+                            </View>
+                        );
+                    }
+
+                    // 13. Numbered Paragraphs or Capital Letter Grounds (e.g. 1. , 2. , A. , B. )
+                    const match = cleanText.match(/^(\d+[\.\)]|[A-Z][\.\)])\s+(.*)$/);
+                    if (match) {
+                        const [, num, rest] = match;
+                        const parts = rest.split('**');
+                        return (
+                            <View key={`num-para-${idx}`} style={styles.numberedParaRow}>
+                                <Text style={styles.paraNumber}>{num}</Text>
+                                <Text style={styles.paraText}>
+                                    {parts.map((p, pIdx) => (
+                                        <Text key={pIdx} style={pIdx % 2 === 1 ? styles.legalBoldSpan : undefined}>
+                                            {p}
+                                        </Text>
+                                    ))}
+                                </Text>
+                            </View>
+                        );
+                    }
+
+                    // 14. Signature and Verification solo blocks
+                    const isSignature =
+                        cleanText.includes('Counsel for Petitioner') ||
+                        cleanText.includes('Counsel for Respondent') ||
+                        cleanText.includes('Advocate for') ||
+                        cleanText.includes('Petitioner.') ||
+                        cleanText.includes('DEPONENT / PETITIONER') ||
+                        cleanText.includes('BEFORE ME') ||
+                        cleanText.includes('ADVOCATE / NOTARY PUBLIC');
+
+                    if (isSignature) {
+                        return (
+                            <Text key={`sig-${idx}`} style={styles.signatureText}>
+                                {cleanText}
+                            </Text>
+                        );
+                    }
+
+                    // 15. General Paragraphs with inline bold handling
+                    const parts = line.split('**');
+                    return (
+                        <Text key={`p-${idx}`} style={styles.legalBodyParagraph}>
+                            {parts.map((part, pIdx) => {
+                                const isBold = pIdx % 2 === 1;
+                                return (
+                                    <Text key={pIdx} style={isBold ? styles.legalBoldSpan : undefined}>
+                                        {part}
+                                    </Text>
+                                );
+                            })}
+                        </Text>
+                    );
+                })}
+            </View>
+        );
+    };
+
     return (
         <>
-            <Modal visible={visible} animationType="slide" transparent onRequestClose={onClose}>
+            <Modal
+                visible={visible}
+                animationType="slide"
+                transparent
+                statusBarTranslucent
+                onRequestClose={onClose}
+            >
                 <View style={styles.modalOverlay}>
                 <View style={styles.modalContent}>
                     {/* Animated Floating Toast */}
@@ -403,26 +752,31 @@ export const PleadingGeneratorModal: React.FC<Props> = ({
                     </View>
 
                     <View style={styles.header}>
-                        <View style={{ flexDirection: 'row', alignItems: 'center', gap: 10, flex: 1 }}>
-                            <View style={styles.iconContainer}>
+                        <View style={{ flexDirection: 'row', alignItems: 'flex-start', gap: 10, flex: 1, paddingRight: 8 }}>
+                            <View style={[styles.iconContainer, { marginTop: 2 }]}>
                                 <MaterialCommunityIcons name="scale-balance" size={22} color={colors.accent} />
                             </View>
                             <View style={{ flex: 1 }}>
-                                <Text style={styles.title} numberOfLines={1}>Paperbook Factory</Text>
-                                <Text style={styles.subtitle} numberOfLines={1}>
-                                    {caseData.name} {caseData.caseNumber ? `• ${caseData.caseNumber}` : ''}
+                                <Text style={styles.title}>Court Drafting Chambers</Text>
+                                <Text style={styles.subtitle}>
+                                    {caseData.name}
                                 </Text>
+                                {caseData.caseNumber ? (
+                                    <View style={styles.headerCaseNumberPill}>
+                                        <Text style={styles.headerCaseNumberText}>{caseData.caseNumber}</Text>
+                                    </View>
+                                ) : null}
                             </View>
                         </View>
                         <TouchableOpacity onPress={onClose} style={styles.closeBtn} hitSlop={{ top: 10, bottom: 10, left: 10, right: 10 }} accessibilityLabel="Close modal">
-                            <Ionicons name="close" size={20} color={colors.textSecondary} />
+                            <Ionicons name="close" size={20} color={colors.critical} />
                         </TouchableOpacity>
                     </View>
 
                     {step === 'CONFIG' && (
                         <ScrollView style={styles.body} showsVerticalScrollIndicator={false} contentContainerStyle={{ paddingBottom: bottomNavPadding + 32 }}>
                             <View style={styles.sectionHeaderRow}>
-                                <Text style={styles.sectionHeading}>1. TARGET COURT & BENCH</Text>
+                                <Text style={styles.sectionHeading}>1. TARGET COURT & JURISDICTION</Text>
                                 <View style={styles.countPill}>
                                     <Text style={styles.countPillText}>{COURT_TIERS.length} Tiers</Text>
                                 </View>
@@ -443,7 +797,7 @@ export const PleadingGeneratorModal: React.FC<Props> = ({
                             </TouchableOpacity>
 
                             <View style={[styles.sectionHeaderRow, { marginTop: spacing.m }]}>
-                                <Text style={styles.sectionHeading}>2. PRACTICE AREA CATEGORY</Text>
+                                <Text style={styles.sectionHeading}>2. PRACTICE AREA & CATEGORY</Text>
                                 <View style={[styles.countPill, { backgroundColor: colors.primary + '20' }]}>
                                     <Text style={[styles.countPillText, { color: colors.primary }]}>{PLEADING_CATEGORIES.length} Categories</Text>
                                 </View>
@@ -468,7 +822,7 @@ export const PleadingGeneratorModal: React.FC<Props> = ({
                             </TouchableOpacity>
 
                             <View style={[styles.sectionHeaderRow, { marginTop: spacing.m }]}>
-                                <Text style={styles.sectionHeading}>3. SELECT PLEADING DOCUMENT</Text>
+                                <Text style={styles.sectionHeading}>3. SELECT COURT FILING / DOCUMENT</Text>
                                 <View style={[styles.countPill, { backgroundColor: colors.accent + '20' }]}>
                                     <Text style={[styles.countPillText, { color: colors.accent }]}>
                                         {PLEADING_TYPES.length} Templates
@@ -689,24 +1043,41 @@ export const PleadingGeneratorModal: React.FC<Props> = ({
                                 <MaterialCommunityIcons name="scale-balance" size={14} color={colors.accent} />
                                 <Text style={styles.engineBadgeText}>MADRAS HIGH COURT COMPILER</Text>
                             </View>
+                            
+                            {/* Animated Pulsing Legal Engine Orb */}
                             <View style={styles.orbContainer}>
-                                <LinearGradient colors={[colors.primary + '40', colors.accent + '25']} style={styles.outerGlowOrb}>
-                                    <View style={styles.innerGlowOrb}>
+                                <Animated.View style={[styles.outerGlowOrb, { transform: [{ scale: pulseGlowAnim }] }]}>
+                                    <LinearGradient colors={[colors.accent + '35', colors.primary + '20']} style={styles.innerGlowOrb}>
                                         <ActivityIndicator size="large" color={colors.accent} />
-                                    </View>
-                                </LinearGradient>
+                                    </LinearGradient>
+                                </Animated.View>
                             </View>
+
                             <Text style={styles.generatingTitle}>Compiling Legal Paperbook</Text>
                             <View style={styles.statusLivePill}>
                                 <View style={styles.statusLiveDot} />
                                 <Text style={styles.generatingSubtitle} numberOfLines={1}>{progressStatus}</Text>
                             </View>
+
+                            {/* Animated Spring Progress Bar */}
                             <View style={styles.progressBarWrapper}>
                                 <View style={styles.progressBarTrack}>
-                                    <LinearGradient colors={[colors.primary, colors.accent]} style={[styles.progressBarFill, { width: `${Math.min(100, (currentStepIndex / 4) * 100)}%` }]} />
+                                    <Animated.View
+                                        style={[
+                                            styles.progressBarFill,
+                                            {
+                                                width: generatingProgressAnim.interpolate({
+                                                    inputRange: [0, 1],
+                                                    outputRange: ['0%', '100%'],
+                                                }),
+                                            },
+                                        ]}
+                                    />
                                 </View>
                                 <Text style={styles.progressBarPercent}>{Math.round((currentStepIndex / 4) * 100)}%</Text>
                             </View>
+
+                            {/* Refined Step Progression Cards */}
                             <View style={styles.progressSteps}>
                                 {[
                                     { step: 1, label: 'Statutory Verification (BNS/BNSS/CPC)', desc: 'Validating procedural rules, court tier & jurisdiction' },
@@ -719,7 +1090,13 @@ export const PleadingGeneratorModal: React.FC<Props> = ({
                                     return (
                                         <View key={s.step} style={[styles.stepCard, isCurrent && styles.stepCardActive, isDone && styles.stepCardDone]}>
                                             <View style={[styles.stepCircle, isCurrent && styles.stepCircleActive, isDone && styles.stepCircleCompleted]}>
-                                                {isDone ? <Ionicons name="checkmark" size={14} color="white" /> : isCurrent ? <ActivityIndicator size="small" color={colors.accent} /> : <Text style={styles.stepNumber}>{s.step}</Text>}
+                                                {isDone ? (
+                                                    <Ionicons name="checkmark" size={13} color="#000000" />
+                                                ) : isCurrent ? (
+                                                    <ActivityIndicator size="small" color={colors.accent} />
+                                                ) : (
+                                                    <Text style={styles.stepNumber}>{s.step}</Text>
+                                                )}
                                             </View>
                                             <View style={{ flex: 1 }}>
                                                 <Text style={[styles.stepLabel, isCurrent && styles.stepLabelActive, isDone && styles.stepLabelDone]}>{s.label}</Text>
@@ -740,38 +1117,46 @@ export const PleadingGeneratorModal: React.FC<Props> = ({
                     {/* STEP 3: REVIEW & EXPORT */}
                     {step === 'REVIEW' && generatedSections && (
                         <View style={{ flex: 1 }}>
-                            {/* Document Tabs */}
-                            <View style={styles.docTabBar}>
-                                {[
-                                    { tab: 'petition' as SectionTab, label: 'Petition', icon: 'file-document' },
-                                    { tab: 'affidavit' as SectionTab, label: 'Affidavit', icon: 'certificate' },
-                                    { tab: 'synopsis' as SectionTab, label: 'Synopsis', icon: 'clock-outline' },
-                                    { tab: 'index' as SectionTab, label: 'Index', icon: 'format-list-numbered' },
-                                    { tab: 'vakalat' as SectionTab, label: 'Vakalat', icon: 'feather' },
-                                ].map(t => (
-                                    <TouchableOpacity
-                                        key={t.tab}
-                                        onPress={() => setActiveTab(t.tab)}
-                                        style={[
-                                            styles.docTab,
-                                            activeTab === t.tab && styles.docTabActive,
-                                        ]}
-                                    >
-                                        <MaterialCommunityIcons
-                                            name={t.icon as any}
-                                            size={16}
-                                            color={activeTab === t.tab ? colors.accent : colors.textTertiary}
-                                        />
-                                        <Text
+                            {/* Horizontal Scrollable Document Tabs (Zero Truncation) */}
+                            <View style={styles.docTabBarContainer}>
+                                <ScrollView
+                                    horizontal
+                                    showsHorizontalScrollIndicator={false}
+                                    contentContainerStyle={styles.docTabBarScrollContent}
+                                >
+                                    {[
+                                        { tab: 'petition' as SectionTab, label: 'Petition', icon: 'file-document-outline' },
+                                        { tab: 'affidavit' as SectionTab, label: 'Affidavit', icon: 'certificate-outline' },
+                                        { tab: 'synopsis' as SectionTab, label: 'Synopsis', icon: 'clock-outline' },
+                                        { tab: 'index' as SectionTab, label: 'Index Table', icon: 'format-list-numbered' },
+                                        { tab: 'vakalat' as SectionTab, label: 'Vakalatnama', icon: 'feather' },
+                                    ].map(t => (
+                                        <SmoothPressable
+                                            key={t.tab}
+                                            onPress={() => setActiveTab(t.tab)}
                                             style={[
-                                                styles.docTabText,
-                                                activeTab === t.tab && styles.docTabTextActive,
+                                                styles.docTab,
+                                                activeTab === t.tab && styles.docTabActive,
                                             ]}
+                                            haptic="light"
+                                            scaleTo={0.94}
                                         >
-                                            {t.label}
-                                        </Text>
-                                    </TouchableOpacity>
-                                ))}
+                                            <MaterialCommunityIcons
+                                                name={t.icon as any}
+                                                size={16}
+                                                color={activeTab === t.tab ? '#000000' : colors.textTertiary}
+                                            />
+                                            <Text
+                                                style={[
+                                                    styles.docTabText,
+                                                    activeTab === t.tab && styles.docTabTextActive,
+                                                ]}
+                                            >
+                                                {t.label}
+                                            </Text>
+                                        </SmoothPressable>
+                                    ))}
+                                </ScrollView>
                             </View>
 
                             {/* Section Preview Box */}
@@ -782,9 +1167,13 @@ export const PleadingGeneratorModal: React.FC<Props> = ({
                             >
                                 <View style={styles.paperSheet}>
                                     <View style={styles.courtBadgeHeader}>
-                                        <Text style={styles.courtBadgeText}>
-                                            {activeCourtInfo.headerTitle.split('\n')[0]}
-                                        </Text>
+                                        <View style={styles.courtFolioLeft}>
+                                            <MaterialCommunityIcons name="scale-balance" size={15} color={colors.accent} />
+                                            <Text style={styles.courtBadgeText}>MADRAS HIGH COURT PAPERBOOK</Text>
+                                        </View>
+                                        <View style={styles.draftBadgePill}>
+                                            <Text style={styles.draftBadgeText}>LEGAL DRAFT</Text>
+                                        </View>
                                     </View>
 
                                     {activeTab === 'index' && (
@@ -813,72 +1202,81 @@ export const PleadingGeneratorModal: React.FC<Props> = ({
                                         </View>
                                     )}
 
-                                    {activeTab === 'synopsis' && (
-                                        <Text style={styles.legalBodyText}>{generatedSections.synopsis}</Text>
-                                    )}
+                                    {activeTab === 'synopsis' && renderFormattedLegalDocument(generatedSections.synopsis)}
 
-                                    {activeTab === 'petition' && (
-                                        <Text style={styles.legalBodyText}>{generatedSections.petition}</Text>
-                                    )}
+                                    {activeTab === 'petition' && renderFormattedLegalDocument(generatedSections.petition)}
 
-                                    {activeTab === 'affidavit' && (
-                                        <Text style={styles.legalBodyText}>{generatedSections.affidavit}</Text>
-                                    )}
+                                    {activeTab === 'affidavit' && renderFormattedLegalDocument(generatedSections.affidavit)}
 
-                                    {activeTab === 'vakalat' && (
-                                        <Text style={styles.legalBodyText}>{generatedSections.vakalat}</Text>
-                                    )}
+                                    {activeTab === 'vakalat' && renderFormattedLegalDocument(generatedSections.vakalat)}
                                 </View>
                             </ScrollView>
 
-                            {/* Export / Share Actions Bar */}
+                            {/* Executive 2-Tier Export / Share Actions Bar */}
                             <View style={styles.actionBar}>
-                                <TouchableOpacity
-                                    style={styles.actionBtnOutline}
-                                    onPress={handleCopySection}
-                                    activeOpacity={0.7}
-                                >
-                                    <Ionicons name="copy-outline" size={17} color={colors.textPrimary} />
-                                    <Text style={styles.actionBtnTextOutline}>Copy</Text>
-                                </TouchableOpacity>
-
-                                <TouchableOpacity
-                                    style={[styles.actionBtnOutline, isSaved && { borderColor: colors.safe, backgroundColor: colors.safe + '15' }]}
-                                    onPress={handleSaveToCase}
-                                    disabled={isSaving || isSaved}
-                                    activeOpacity={0.7}
-                                >
-                                    {isSaving ? (
-                                        <ActivityIndicator size="small" color={colors.accent} />
-                                    ) : (
-                                        <>
-                                            <Ionicons
-                                                name={isSaved ? 'checkmark-circle' : 'bookmark-outline'}
-                                                size={17}
-                                                color={isSaved ? colors.safe : colors.textPrimary}
-                                            />
-                                            <Text style={[styles.actionBtnTextOutline, isSaved && { color: colors.safe, fontWeight: '700' }]}>
-                                                {isSaved ? 'Saved' : 'Save to Case'}
-                                            </Text>
-                                        </>
-                                    )}
-                                </TouchableOpacity>
-
-                                <TouchableOpacity
+                                {/* Row 1: Primary Full-Width Export Action */}
+                                <SmoothPressable
                                     style={styles.actionBtnPrimary}
                                     onPress={handleShareDocx}
-                                    activeOpacity={0.85}
+                                    haptic="medium"
+                                    scaleTo={0.98}
                                 >
                                     <LinearGradient
-                                        colors={[colors.accent, colors.primary]}
+                                        colors={['#D4AF37', '#B8860B']}
                                         start={{ x: 0, y: 0 }}
                                         end={{ x: 1, y: 0 }}
                                         style={styles.actionGradient}
                                     >
-                                        <Ionicons name="share-social" size={17} color="white" />
-                                        <Text style={styles.actionBtnTextPrimary}>Share .docx</Text>
+                                        <Ionicons name="share-social" size={18} color="#000000" />
+                                        <Text style={styles.actionBtnTextPrimary}>Share & Export Court .docx</Text>
                                     </LinearGradient>
-                                </TouchableOpacity>
+                                </SmoothPressable>
+
+                                {/* Row 2: 3 Equal-Width Tool Actions */}
+                                <View style={styles.actionToolsRow}>
+                                    <SmoothPressable
+                                        style={styles.actionToolBtn}
+                                        onPress={handleCopySection}
+                                        haptic="light"
+                                        scaleTo={0.95}
+                                    >
+                                        <Ionicons name="copy-outline" size={16} color={colors.textPrimary} />
+                                        <Text style={styles.actionToolBtnText}>Copy</Text>
+                                    </SmoothPressable>
+
+                                    <SmoothPressable
+                                        style={[styles.actionToolBtn, { borderColor: '#2B579A', backgroundColor: '#2B579A15' }]}
+                                        onPress={handleOpenWord}
+                                        haptic="light"
+                                        scaleTo={0.95}
+                                    >
+                                        <MaterialCommunityIcons name="file-word-box" size={17} color="#2B579A" />
+                                        <Text style={[styles.actionToolBtnText, { color: '#2B579A', fontWeight: '700' }]}>MS Word</Text>
+                                    </SmoothPressable>
+
+                                    <SmoothPressable
+                                        style={[styles.actionToolBtn, isSaved && { borderColor: colors.safe, backgroundColor: colors.safe + '15' }]}
+                                        onPress={handleSaveToCase}
+                                        disabled={isSaving || isSaved}
+                                        haptic="medium"
+                                        scaleTo={0.95}
+                                    >
+                                        {isSaving ? (
+                                            <ActivityIndicator size="small" color={colors.accent} />
+                                        ) : (
+                                            <>
+                                                <Ionicons
+                                                    name={isSaved ? 'checkmark-circle' : 'bookmark-outline'}
+                                                    size={16}
+                                                    color={isSaved ? colors.safe : colors.textPrimary}
+                                                />
+                                                <Text style={[styles.actionToolBtnText, isSaved && { color: colors.safe, fontWeight: '700' }]}>
+                                                    {isSaved ? 'Saved' : 'Save'}
+                                                </Text>
+                                            </>
+                                        )}
+                                    </SmoothPressable>
+                                </View>
                             </View>
                         </View>
                     )}
@@ -891,7 +1289,7 @@ export const PleadingGeneratorModal: React.FC<Props> = ({
                                 onPress={onClose}
                                 activeOpacity={0.7}
                             >
-                                <Ionicons name="close-circle-outline" size={18} color={colors.textSecondary} />
+                                <Ionicons name="close-circle-outline" size={18} color={colors.critical} />
                                 <Text style={styles.cancelBtnText}>Cancel</Text>
                             </TouchableOpacity>
 
@@ -909,382 +1307,380 @@ export const PleadingGeneratorModal: React.FC<Props> = ({
                                     <View style={styles.generateIconBadge}>
                                         <MaterialCommunityIcons name="lightning-bolt" size={16} color="white" />
                                     </View>
-                                    <Text style={styles.generateBtnText}>Generate Paperbook</Text>
+                                    <Text style={styles.generateBtnText}>Draft Court Document</Text>
                                     <Ionicons name="arrow-forward" size={16} color="rgba(255,255,255,0.8)" style={{ marginLeft: 2 }} />
                                 </LinearGradient>
                             </TouchableOpacity>
                         </View>
                     )}
                 </View>
-            </View>
-        </Modal>
 
-        {/* Sub-Modal: Searchable Court Tier Picker with 3-Button Nav Protection */}
-        <Modal visible={isCourtPickerOpen} animationType="slide" transparent onRequestClose={() => setIsCourtPickerOpen(false)}>
-                <View style={styles.subModalOverlay}>
-                    <View style={styles.subModalContent}>
-                        {/* Drag handle */}
-                        <View style={styles.dragHandleContainer}>
-                            <View style={styles.dragHandle} />
-                        </View>
-
-                        <View style={styles.subModalHeader}>
-                            <View style={{ flexDirection: 'row', alignItems: 'center', gap: 8 }}>
-                                <View style={styles.subModalIconBox}>
-                                    <MaterialCommunityIcons name="bank" size={18} color={colors.accent} />
+                {/* In-Modal Sub-Sheet: Searchable Court Tier Picker */}
+                    {isCourtPickerOpen && (
+                        <View style={styles.subModalOverlay}>
+                            <View style={styles.subModalContent}>
+                                {/* Drag handle */}
+                                <View style={styles.dragHandleContainer}>
+                                    <View style={styles.dragHandle} />
                                 </View>
-                                <View>
-                                    <Text style={styles.subModalTitle}>Select Target Court & Bench</Text>
-                                    <Text style={styles.subModalSubtitle}>Tamil Nadu & Puducherry Jurisdiction</Text>
-                                </View>
-                            </View>
-                            <TouchableOpacity
-                                onPress={() => setIsCourtPickerOpen(false)}
-                                style={styles.closeBtn}
-                                hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
-                            >
-                                <Ionicons name="close" size={18} color={colors.textSecondary} />
-                            </TouchableOpacity>
-                        </View>
 
-                        {/* Search in courts */}
-                        <View style={[
-                            styles.searchBarContainer,
-                            { marginHorizontal: spacing.m, marginBottom: spacing.s },
-                            isCourtSearchFocused && styles.searchBarFocused,
-                        ]}>
-                            <View style={styles.searchIconBadge}>
-                                <Ionicons name="search" size={15} color={colors.accent} />
-                            </View>
-                            <TextInput
-                                style={styles.searchInput}
-                                placeholder="Search by name, bench or district (Chennai, Madurai...)"
-                                placeholderTextColor={colors.textTertiary}
-                                value={courtSearchQuery}
-                                onChangeText={setCourtSearchQuery}
-                                onFocus={() => setIsCourtSearchFocused(true)}
-                                onBlur={() => setIsCourtSearchFocused(false)}
-                                autoCapitalize="none"
-                                autoCorrect={false}
-                            />
-                            {courtSearchQuery.length > 0 && (
-                                <TouchableOpacity
-                                    onPress={() => setCourtSearchQuery('')}
-                                    style={styles.searchClearBtn}
-                                >
-                                    <Ionicons name="close" size={14} color={colors.textPrimary} />
-                                </TouchableOpacity>
-                            )}
-                        </View>
-
-                        <ScrollView
-                            style={{ flex: 1, paddingHorizontal: spacing.m }}
-                            contentContainerStyle={{ paddingBottom: bottomNavPadding + 32 }}
-                            showsVerticalScrollIndicator={true}
-                        >
-                            {filteredCourtTiers.map(tier => {
-                                const isSelected = selectedTier === tier.value;
-                                return (
+                                <View style={styles.subModalHeader}>
+                                    <View style={{ flexDirection: 'row', alignItems: 'center', gap: 8 }}>
+                                        <View style={styles.subModalIconBox}>
+                                            <MaterialCommunityIcons name="bank" size={18} color={colors.accent} />
+                                        </View>
+                                        <View>
+                                            <Text style={styles.subModalTitle}>Select Target Court & Bench</Text>
+                                            <Text style={styles.subModalSubtitle}>Tamil Nadu & Puducherry Jurisdiction</Text>
+                                        </View>
+                                    </View>
                                     <TouchableOpacity
-                                        key={tier.value}
+                                        onPress={() => setIsCourtPickerOpen(false)}
+                                        style={styles.closeBtn}
+                                        hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
+                                    >
+                                        <Ionicons name="close" size={18} color={colors.critical} />
+                                    </TouchableOpacity>
+                                </View>
+
+                                {/* Search in courts */}
+                                <View style={[
+                                    styles.searchBarContainer,
+                                    { marginHorizontal: spacing.m, marginBottom: spacing.s },
+                                    isCourtSearchFocused && styles.searchBarFocused,
+                                ]}>
+                                    <View style={styles.searchIconBadge}>
+                                        <Ionicons name="search" size={15} color={colors.accent} />
+                                    </View>
+                                    <TextInput
+                                        style={styles.searchInput}
+                                        placeholder="Search by name, bench or district (Chennai, Madurai...)"
+                                        placeholderTextColor={colors.textTertiary}
+                                        value={courtSearchQuery}
+                                        onChangeText={setCourtSearchQuery}
+                                        onFocus={() => setIsCourtSearchFocused(true)}
+                                        onBlur={() => setIsCourtSearchFocused(false)}
+                                        autoCapitalize="none"
+                                        autoCorrect={false}
+                                    />
+                                    {courtSearchQuery.length > 0 && (
+                                        <TouchableOpacity
+                                            onPress={() => setCourtSearchQuery('')}
+                                            style={styles.searchClearBtn}
+                                        >
+                                            <Ionicons name="close" size={14} color={colors.textPrimary} />
+                                        </TouchableOpacity>
+                                    )}
+                                </View>
+
+                                <ScrollView
+                                    style={{ flex: 1, paddingHorizontal: spacing.m }}
+                                    contentContainerStyle={{ paddingBottom: bottomNavPadding + 32 }}
+                                    showsVerticalScrollIndicator={true}
+                                    keyboardShouldPersistTaps="handled"
+                                >
+                                    {filteredCourtTiers.map(tier => {
+                                        const isSelected = selectedTier === tier.value;
+                                        return (
+                                            <TouchableOpacity
+                                                key={tier.value}
+                                                onPress={() => {
+                                                    Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
+                                                    setSelectedTier(tier.value);
+                                                    setIsCourtPickerOpen(false);
+                                                }}
+                                                style={[
+                                                    styles.pickerRowItem,
+                                                    isSelected && styles.pickerRowItemActive,
+                                                ]}
+                                                activeOpacity={0.7}
+                                            >
+                                                <View style={[styles.dropdownIconCircle, isSelected && { backgroundColor: colors.accent + '25' }]}>
+                                                    <MaterialCommunityIcons
+                                                        name={tier.isHighCourt ? 'bank' : 'gavel'}
+                                                        size={18}
+                                                        color={isSelected ? colors.accent : colors.textSecondary}
+                                                    />
+                                                </View>
+                                                <View style={{ flex: 1 }}>
+                                                    <Text style={[styles.pickerItemLabel, isSelected && { color: colors.accent, fontWeight: '700' }]}>
+                                                        {tier.label}
+                                                    </Text>
+                                                    <Text style={styles.pickerItemSubtext}>
+                                                        {tier.city} • {tier.isHighCourt ? 'High Court' : 'District Judiciary'}
+                                                    </Text>
+                                                </View>
+                                                {isSelected && (
+                                                    <Ionicons name="checkmark-circle" size={20} color={colors.accent} />
+                                                )}
+                                            </TouchableOpacity>
+                                        );
+                                    })}
+                                </ScrollView>
+                            </View>
+                        </View>
+                    )}
+
+                    {/* In-Modal Sub-Sheet: Searchable 75+ Pleading Document Picker */}
+                    {isPleadingPickerOpen && (
+                        <View style={styles.subModalOverlay}>
+                            <View style={[styles.subModalContent, { height: '88%' }]}>
+                                {/* Drag Handle */}
+                                <View style={styles.dragHandleContainer}>
+                                    <View style={styles.dragHandle} />
+                                </View>
+
+                                {/* Header */}
+                                <View style={styles.subModalHeader}>
+                                    <View style={{ flexDirection: 'row', alignItems: 'center', gap: 8 }}>
+                                        <View style={styles.subModalIconBox}>
+                                            <MaterialCommunityIcons name="file-document-multiple-outline" size={18} color={colors.accent} />
+                                        </View>
+                                        <View>
+                                            <Text style={styles.subModalTitle}>Select Pleading Document</Text>
+                                            <Text style={styles.subModalSubtitle}>
+                                                {filteredPleadings.length} of {PLEADING_TYPES.length} Indian Court Templates
+                                            </Text>
+                                        </View>
+                                    </View>
+                                    <TouchableOpacity
+                                        onPress={() => setIsPleadingPickerOpen(false)}
+                                        style={styles.closeBtn}
+                                        hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
+                                    >
+                                        <Ionicons name="close" size={18} color={colors.critical} />
+                                    </TouchableOpacity>
+                                </View>
+
+                                {/* Sub-modal Body with Search and Category Dropdown Filter */}
+                                <View style={{ flex: 1, paddingHorizontal: spacing.m }}>
+                                    {/* Search Bar */}
+                                    <View style={[styles.searchBarContainer, isSearchFocused && styles.searchBarFocused, { marginTop: spacing.s }]}>
+                                        <View style={styles.searchIconBadge}>
+                                            <Ionicons name="search" size={16} color={colors.accent} />
+                                        </View>
+                                        <TextInput
+                                            style={styles.searchInput}
+                                            placeholder="Search section (482, 138), name (Bail, Injunction)..."
+                                            placeholderTextColor={colors.textTertiary}
+                                            value={searchQuery}
+                                            onChangeText={setSearchQuery}
+                                            onFocus={() => setIsSearchFocused(true)}
+                                            onBlur={() => setIsSearchFocused(false)}
+                                            autoCapitalize="none"
+                                            autoCorrect={false}
+                                            returnKeyType="search"
+                                        />
+                                        {searchQuery.length > 0 && (
+                                            <TouchableOpacity
+                                                onPress={() => {
+                                                    Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
+                                                    setSearchQuery('');
+                                                }}
+                                                style={styles.searchClearBtn}
+                                                hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
+                                            >
+                                                <Ionicons name="close" size={14} color={colors.textPrimary} />
+                                            </TouchableOpacity>
+                                        )}
+                                    </View>
+
+                                    {/* Filter by Category Dropdown Row */}
+                                    <TouchableOpacity
+                                        style={styles.filterCategoryDropdownRow}
                                         onPress={() => {
                                             Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
-                                            setSelectedTier(tier.value);
-                                            setIsCourtPickerOpen(false);
+                                            setIsCategoryPickerOpen(true);
                                         }}
-                                        style={[
-                                            styles.pickerRowItem,
-                                            isSelected && styles.pickerRowItemActive,
-                                        ]}
                                         activeOpacity={0.7}
                                     >
-                                        <View style={[styles.dropdownIconCircle, isSelected && { backgroundColor: colors.accent + '25' }]}>
-                                            <MaterialCommunityIcons
-                                                name={tier.isHighCourt ? 'bank' : 'gavel'}
-                                                size={18}
-                                                color={isSelected ? colors.accent : colors.textSecondary}
-                                            />
-                                        </View>
-                                        <View style={{ flex: 1 }}>
-                                            <Text style={[styles.pickerItemLabel, isSelected && { color: colors.accent, fontWeight: '700' }]}>
-                                                {tier.label}
-                                            </Text>
-                                            <Text style={styles.pickerItemSubtext}>
-                                                {tier.city} • {tier.isHighCourt ? 'High Court' : 'District Judiciary'}
-                                            </Text>
-                                        </View>
-                                        {isSelected && (
-                                            <Ionicons name="checkmark-circle" size={20} color={colors.accent} />
-                                        )}
+                                        <MaterialCommunityIcons name="filter-variant" size={16} color={colors.accent} />
+                                        <Text style={styles.filterCategoryText} numberOfLines={1}>
+                                            Practice Area: <Text style={{ fontWeight: '700', color: colors.textPrimary }}>{selectedCategory === 'ALL' ? 'All Categories (75+ Filings)' : activeCategoryInfo?.label}</Text>
+                                        </Text>
+                                        <Ionicons name="chevron-down" size={14} color={colors.textSecondary} />
                                     </TouchableOpacity>
-                                );
-                            })}
-                        </ScrollView>
-                    </View>
-                </View>
-            </Modal>
 
-            {/* Sub-Modal: Searchable Category Picker with 3-Button Nav Protection */}
-            <Modal visible={isCategoryPickerOpen} animationType="slide" transparent onRequestClose={() => setIsCategoryPickerOpen(false)}>
-                <View style={styles.subModalOverlay}>
-                    <View style={styles.subModalContent}>
-                        {/* Drag handle */}
-                        <View style={styles.dragHandleContainer}>
-                            <View style={styles.dragHandle} />
-                        </View>
+                                    {/* Scrollable list of filtered pleadings */}
+                                    <ScrollView
+                                        style={{ flex: 1 }}
+                                        contentContainerStyle={{ paddingBottom: bottomNavPadding + 32 }}
+                                        showsVerticalScrollIndicator={true}
+                                        keyboardShouldPersistTaps="handled"
+                                    >
+                                        {filteredPleadings.map(pleading => {
+                                            const isSelected = selectedPleading === pleading.value;
+                                            return (
+                                                <TouchableOpacity
+                                                    key={pleading.value}
+                                                    onPress={() => {
+                                                        Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
+                                                        setSelectedPleading(pleading.value);
+                                                        setIsPleadingPickerOpen(false);
+                                                    }}
+                                                    style={[
+                                                        styles.pickerRowItem,
+                                                        isSelected && styles.pickerRowItemActive,
+                                                    ]}
+                                                    activeOpacity={0.7}
+                                                >
+                                                    <View style={{ flex: 1 }}>
+                                                        <View style={{ flexDirection: 'row', alignItems: 'center', gap: 6, flexWrap: 'wrap' }}>
+                                                            <Text style={[styles.pickerItemLabel, isSelected && { color: colors.accent, fontWeight: '700' }]}>
+                                                                {pleading.label}
+                                                            </Text>
+                                                            <View style={styles.statutoryBadge}>
+                                                                <Text style={styles.statutoryText}>{pleading.statutoryRef}</Text>
+                                                            </View>
+                                                        </View>
+                                                        <Text style={styles.pickerItemSubtext} numberOfLines={2}>
+                                                            {pleading.description}
+                                                        </Text>
+                                                        {pleading.oldRef && (
+                                                            <Text style={styles.oldRefText}>Replaces: {pleading.oldRef}</Text>
+                                                        )}
+                                                    </View>
+                                                    <Ionicons
+                                                        name={isSelected ? 'checkmark-circle' : 'radio-button-off'}
+                                                        size={20}
+                                                        color={isSelected ? colors.accent : colors.textTertiary}
+                                                    />
+                                                </TouchableOpacity>
+                                            );
+                                        })}
 
-                        <View style={styles.subModalHeader}>
-                            <View style={{ flexDirection: 'row', alignItems: 'center', gap: 8 }}>
-                                <View style={[styles.subModalIconBox, { backgroundColor: colors.primary + '20' }]}>
-                                    <MaterialCommunityIcons name="folder-multiple" size={18} color={colors.primary} />
-                                </View>
-                                <View>
-                                    <Text style={styles.subModalTitle}>Select Practice Category</Text>
-                                    <Text style={styles.subModalSubtitle}>Filter 75+ Indian Court Document Types</Text>
+                                        {filteredPleadings.length === 0 && (
+                                            <View style={styles.emptySearchBox}>
+                                                <Ionicons name="search-outline" size={36} color={colors.accent} />
+                                                <Text style={styles.emptySearchText}>No matching pleadings found</Text>
+                                                <Text style={styles.emptySearchSubtext}>
+                                                    No legal documents matched "{searchQuery}". Try searching with section (482, 138, Order 39) or switch category.
+                                                </Text>
+                                                <TouchableOpacity
+                                                    style={styles.emptyResetBtn}
+                                                    onPress={() => {
+                                                        setSearchQuery('');
+                                                        setSelectedCategory('ALL');
+                                                    }}
+                                                >
+                                                    <Text style={styles.emptyResetText}>Reset Filters & Search All 75+</Text>
+                                                </TouchableOpacity>
+                                            </View>
+                                        )}
+                                    </ScrollView>
                                 </View>
                             </View>
-                            <TouchableOpacity
-                                onPress={() => setIsCategoryPickerOpen(false)}
-                                style={styles.closeBtn}
-                                hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
-                            >
-                                <Ionicons name="close" size={18} color={colors.textSecondary} />
-                            </TouchableOpacity>
                         </View>
+                    )}
 
-                        <ScrollView
-                            style={{ flex: 1, paddingHorizontal: spacing.m }}
-                            contentContainerStyle={{ paddingBottom: bottomNavPadding + 32 }}
-                            showsVerticalScrollIndicator={true}
-                        >
-                            {/* All Categories option */}
-                            <TouchableOpacity
-                                onPress={() => {
-                                    Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
-                                    setSelectedCategory('ALL');
-                                    setIsCategoryPickerOpen(false);
-                                }}
-                                style={[
-                                    styles.pickerRowItem,
-                                    selectedCategory === 'ALL' && styles.pickerRowItemActive,
-                                ]}
-                                activeOpacity={0.7}
-                            >
-                                <View style={[styles.dropdownIconCircle, selectedCategory === 'ALL' && { backgroundColor: colors.accent + '25' }]}>
-                                    <MaterialCommunityIcons
-                                        name="apps"
-                                        size={18}
-                                        color={selectedCategory === 'ALL' ? colors.accent : colors.textSecondary}
-                                    />
+                    {/* In-Modal Sub-Sheet: Searchable Practice Category Picker */}
+                    {isCategoryPickerOpen && (
+                        <View style={[styles.subModalOverlay, { zIndex: 1010, elevation: 30 }]}>
+                            <View style={styles.subModalContent}>
+                                {/* Drag handle */}
+                                <View style={styles.dragHandleContainer}>
+                                    <View style={styles.dragHandle} />
                                 </View>
-                                <View style={{ flex: 1 }}>
-                                    <Text style={[styles.pickerItemLabel, selectedCategory === 'ALL' && { color: colors.accent, fontWeight: '700' }]}>
-                                        All Categories (All 75+ Legal Filings)
-                                    </Text>
-                                    <Text style={styles.pickerItemSubtext}>
-                                        Search across Criminal, Civil, Writs, Family, Commercial, MACT & Notices
-                                    </Text>
-                                </View>
-                                {selectedCategory === 'ALL' && (
-                                    <Ionicons name="checkmark-circle" size={20} color={colors.accent} />
-                                )}
-                            </TouchableOpacity>
 
-                            {PLEADING_CATEGORIES.map(cat => {
-                                const isSelected = selectedCategory === cat.value;
-                                return (
+                                <View style={styles.subModalHeader}>
+                                    <View style={{ flexDirection: 'row', alignItems: 'center', gap: 8 }}>
+                                        <View style={[styles.subModalIconBox, { backgroundColor: colors.primary + '20' }]}>
+                                            <MaterialCommunityIcons name="folder-multiple" size={18} color={colors.primary} />
+                                        </View>
+                                        <View>
+                                            <Text style={styles.subModalTitle}>Select Practice Category</Text>
+                                            <Text style={styles.subModalSubtitle}>Filter 75+ Indian Court Document Types</Text>
+                                        </View>
+                                    </View>
                                     <TouchableOpacity
-                                        key={cat.value}
+                                        onPress={() => setIsCategoryPickerOpen(false)}
+                                        style={styles.closeBtn}
+                                        hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
+                                    >
+                                        <Ionicons name="close" size={18} color={colors.critical} />
+                                    </TouchableOpacity>
+                                </View>
+
+                                <ScrollView
+                                    style={{ flex: 1, paddingHorizontal: spacing.m }}
+                                    contentContainerStyle={{ paddingBottom: bottomNavPadding + 32 }}
+                                    showsVerticalScrollIndicator={true}
+                                    keyboardShouldPersistTaps="handled"
+                                >
+                                    {/* All Categories option */}
+                                    <TouchableOpacity
                                         onPress={() => {
                                             Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
-                                            setSelectedCategory(cat.value);
+                                            setSelectedCategory('ALL');
                                             setIsCategoryPickerOpen(false);
                                         }}
                                         style={[
                                             styles.pickerRowItem,
-                                            isSelected && styles.pickerRowItemActive,
+                                            selectedCategory === 'ALL' && styles.pickerRowItemActive,
                                         ]}
                                         activeOpacity={0.7}
                                     >
-                                        <View style={[styles.dropdownIconCircle, isSelected && { backgroundColor: colors.primary + '25' }]}>
+                                        <View style={[styles.dropdownIconCircle, selectedCategory === 'ALL' && { backgroundColor: colors.accent + '25' }]}>
                                             <MaterialCommunityIcons
-                                                name={cat.icon as any}
+                                                name="apps"
                                                 size={18}
-                                                color={isSelected ? colors.primary : colors.textSecondary}
+                                                color={selectedCategory === 'ALL' ? colors.accent : colors.textSecondary}
                                             />
                                         </View>
                                         <View style={{ flex: 1 }}>
-                                            <Text style={[styles.pickerItemLabel, isSelected && { color: colors.primary, fontWeight: '700' }]}>
-                                                {cat.label}
+                                            <Text style={[styles.pickerItemLabel, selectedCategory === 'ALL' && { color: colors.accent, fontWeight: '700' }]}>
+                                                All Categories (All 75+ Legal Filings)
                                             </Text>
                                             <Text style={styles.pickerItemSubtext}>
-                                                {cat.description}
+                                                Search across Criminal, Civil, Writs, Family, Commercial, MACT & Notices
                                             </Text>
                                         </View>
-                                        {isSelected && (
-                                            <Ionicons name="checkmark-circle" size={20} color={colors.primary} />
+                                        {selectedCategory === 'ALL' && (
+                                            <Ionicons name="checkmark-circle" size={20} color={colors.accent} />
                                         )}
                                     </TouchableOpacity>
-                                );
-                            })}
-                        </ScrollView>
-                    </View>
-                </View>
-            </Modal>
 
-            {/* Sub-Modal: Searchable 75+ Pleading Document Picker */}
-            <Modal
-                visible={isPleadingPickerOpen}
-                animationType="slide"
-                transparent
-                onRequestClose={() => setIsPleadingPickerOpen(false)}
-            >
-                <View style={styles.subModalOverlay}>
-                    <View style={[styles.subModalContent, { height: '88%' }]}>
-                        {/* Drag Handle */}
-                        <View style={styles.dragHandleContainer}>
-                            <View style={styles.dragHandle} />
-                        </View>
-
-                        {/* Header */}
-                        <View style={styles.subModalHeader}>
-                            <View style={{ flexDirection: 'row', alignItems: 'center', gap: 8 }}>
-                                <View style={styles.subModalIconBox}>
-                                    <MaterialCommunityIcons name="file-document-multiple-outline" size={18} color={colors.accent} />
-                                </View>
-                                <View>
-                                    <Text style={styles.subModalTitle}>Select Pleading Document</Text>
-                                    <Text style={styles.subModalSubtitle}>
-                                        {filteredPleadings.length} of {PLEADING_TYPES.length} Indian Court Templates
-                                    </Text>
-                                </View>
-                            </View>
-                            <TouchableOpacity
-                                onPress={() => setIsPleadingPickerOpen(false)}
-                                style={styles.closeBtn}
-                                hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
-                            >
-                                <Ionicons name="close" size={18} color={colors.textSecondary} />
-                            </TouchableOpacity>
-                        </View>
-
-                        {/* Sub-modal Body with Search and Category Dropdown Filter */}
-                        <View style={{ flex: 1, paddingHorizontal: spacing.m }}>
-                            {/* Search Bar */}
-                            <View style={[styles.searchBarContainer, isSearchFocused && styles.searchBarFocused, { marginTop: spacing.s }]}>
-                                <View style={styles.searchIconBadge}>
-                                    <Ionicons name="search" size={16} color={colors.accent} />
-                                </View>
-                                <TextInput
-                                    style={styles.searchInput}
-                                    placeholder="Search section (482, 138), name (Bail, Injunction)..."
-                                    placeholderTextColor={colors.textTertiary}
-                                    value={searchQuery}
-                                    onChangeText={setSearchQuery}
-                                    onFocus={() => setIsSearchFocused(true)}
-                                    onBlur={() => setIsSearchFocused(false)}
-                                    autoCapitalize="none"
-                                    autoCorrect={false}
-                                    returnKeyType="search"
-                                />
-                                {searchQuery.length > 0 && (
-                                    <TouchableOpacity
-                                        onPress={() => {
-                                            Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
-                                            setSearchQuery('');
-                                        }}
-                                        style={styles.searchClearBtn}
-                                        hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
-                                    >
-                                        <Ionicons name="close" size={14} color={colors.textPrimary} />
-                                    </TouchableOpacity>
-                                )}
-                            </View>
-
-                            {/* Filter by Category Dropdown Row */}
-                            <TouchableOpacity
-                                style={styles.filterCategoryDropdownRow}
-                                onPress={() => {
-                                    Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
-                                    setIsCategoryPickerOpen(true);
-                                }}
-                                activeOpacity={0.7}
-                            >
-                                <MaterialCommunityIcons name="filter-variant" size={16} color={colors.accent} />
-                                <Text style={styles.filterCategoryText} numberOfLines={1}>
-                                    Practice Area: <Text style={{ fontWeight: '700', color: colors.textPrimary }}>{selectedCategory === 'ALL' ? 'All Categories (75+ Filings)' : activeCategoryInfo?.label}</Text>
-                                </Text>
-                                <Ionicons name="chevron-down" size={14} color={colors.textSecondary} />
-                            </TouchableOpacity>
-
-                            {/* Scrollable list of filtered pleadings */}
-                            <ScrollView
-                                style={{ flex: 1 }}
-                                contentContainerStyle={{ paddingBottom: bottomNavPadding + 32 }}
-                                showsVerticalScrollIndicator={true}
-                            >
-                                {filteredPleadings.map(pleading => {
-                                    const isSelected = selectedPleading === pleading.value;
-                                    return (
-                                        <TouchableOpacity
-                                            key={pleading.value}
-                                            onPress={() => {
-                                                Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
-                                                setSelectedPleading(pleading.value);
-                                                setIsPleadingPickerOpen(false);
-                                            }}
-                                            style={[
-                                                styles.pickerRowItem,
-                                                isSelected && styles.pickerRowItemActive,
-                                            ]}
-                                            activeOpacity={0.7}
-                                        >
-                                            <View style={{ flex: 1 }}>
-                                                <View style={{ flexDirection: 'row', alignItems: 'center', gap: 6, flexWrap: 'wrap' }}>
-                                                    <Text style={[styles.pickerItemLabel, isSelected && { color: colors.accent, fontWeight: '700' }]}>
-                                                        {pleading.label}
-                                                    </Text>
-                                                    <View style={styles.statutoryBadge}>
-                                                        <Text style={styles.statutoryText}>{pleading.statutoryRef}</Text>
-                                                    </View>
+                                    {PLEADING_CATEGORIES.map(cat => {
+                                        const isSelected = selectedCategory === cat.value;
+                                        return (
+                                            <TouchableOpacity
+                                                key={cat.value}
+                                                onPress={() => {
+                                                    Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
+                                                    setSelectedCategory(cat.value);
+                                                    setIsCategoryPickerOpen(false);
+                                                }}
+                                                style={[
+                                                    styles.pickerRowItem,
+                                                    isSelected && styles.pickerRowItemActive,
+                                                ]}
+                                                activeOpacity={0.7}
+                                            >
+                                                <View style={[styles.dropdownIconCircle, isSelected && { backgroundColor: colors.primary + '25' }]}>
+                                                    <MaterialCommunityIcons
+                                                        name={cat.icon as any}
+                                                        size={18}
+                                                        color={isSelected ? colors.primary : colors.textSecondary}
+                                                    />
                                                 </View>
-                                                <Text style={styles.pickerItemSubtext} numberOfLines={2}>
-                                                    {pleading.description}
-                                                </Text>
-                                                {pleading.oldRef && (
-                                                    <Text style={styles.oldRefText}>Replaces: {pleading.oldRef}</Text>
+                                                <View style={{ flex: 1 }}>
+                                                    <Text style={[styles.pickerItemLabel, isSelected && { color: colors.primary, fontWeight: '700' }]}>
+                                                        {cat.label}
+                                                    </Text>
+                                                    <Text style={styles.pickerItemSubtext}>
+                                                        {cat.description}
+                                                    </Text>
+                                                </View>
+                                                {isSelected && (
+                                                    <Ionicons name="checkmark-circle" size={20} color={colors.primary} />
                                                 )}
-                                            </View>
-                                            <Ionicons
-                                                name={isSelected ? 'checkmark-circle' : 'radio-button-off'}
-                                                size={20}
-                                                color={isSelected ? colors.accent : colors.textTertiary}
-                                            />
-                                        </TouchableOpacity>
-                                    );
-                                })}
-
-                                {filteredPleadings.length === 0 && (
-                                    <View style={styles.emptySearchBox}>
-                                        <Ionicons name="search-outline" size={36} color={colors.accent} />
-                                        <Text style={styles.emptySearchText}>No matching pleadings found</Text>
-                                        <Text style={styles.emptySearchSubtext}>
-                                            No legal documents matched "{searchQuery}". Try searching with section (482, 138, Order 39) or switch category.
-                                        </Text>
-                                        <TouchableOpacity
-                                            style={styles.emptyResetBtn}
-                                            onPress={() => {
-                                                setSearchQuery('');
-                                                setSelectedCategory('ALL');
-                                            }}
-                                        >
-                                            <Text style={styles.emptyResetText}>Reset Filters & Search All 75+</Text>
-                                        </TouchableOpacity>
-                                    </View>
-                                )}
-                            </ScrollView>
+                                            </TouchableOpacity>
+                                        );
+                                    })}
+                                </ScrollView>
+                            </View>
                         </View>
-                    </View>
+                    )}
                 </View>
             </Modal>
         </>
@@ -1371,15 +1767,15 @@ const createStyles = (
         },
         header: {
             flexDirection: 'row',
-            alignItems: 'center',
+            alignItems: 'flex-start',
             justifyContent: 'space-between',
             paddingBottom: spacing.m,
             borderBottomWidth: StyleSheet.hairlineWidth,
             borderBottomColor: colors.border + '60',
         },
         iconContainer: {
-            width: 40,
-            height: 40,
+            width: 38,
+            height: 38,
             borderRadius: 12,
             backgroundColor: colors.accent + '20',
             alignItems: 'center',
@@ -1389,24 +1785,41 @@ const createStyles = (
         },
         title: {
             color: colors.textPrimary,
-            fontSize: 18,
+            fontSize: 17,
             fontWeight: '700',
             letterSpacing: 0.2,
+            lineHeight: 22,
         },
         subtitle: {
             color: colors.textSecondary,
             fontSize: 12,
-            marginTop: 2,
+            lineHeight: 17,
+            marginTop: 3,
+        },
+        headerCaseNumberPill: {
+            alignSelf: 'flex-start',
+            backgroundColor: colors.accent + '18',
+            paddingHorizontal: 7,
+            paddingVertical: 2,
+            borderRadius: 6,
+            marginTop: 4,
+            borderWidth: 0.8,
+            borderColor: colors.accent + '35',
+        },
+        headerCaseNumberText: {
+            color: colors.accent,
+            fontSize: 11,
+            fontWeight: '700',
         },
         closeBtn: {
-            width: 32,
-            height: 32,
-            borderRadius: 16,
-            backgroundColor: colors.surfaceHighlight,
+            width: 34,
+            height: 34,
+            borderRadius: 17,
+            backgroundColor: colors.critical + '18',
             alignItems: 'center',
             justifyContent: 'center',
-            borderWidth: 1,
-            borderColor: colors.border + '40',
+            borderWidth: 1.2,
+            borderColor: colors.critical + '45',
         },
         body: {
             flex: 1,
@@ -1883,17 +2296,17 @@ const createStyles = (
             height: 52,
             borderRadius: 16,
             borderWidth: 1.5,
-            borderColor: colors.border,
+            borderColor: colors.critical + '50',
             flexDirection: 'row',
             alignItems: 'center',
             justifyContent: 'center',
             gap: 6,
-            backgroundColor: colors.surfaceHighlight,
+            backgroundColor: colors.critical + '14',
         },
         cancelBtnText: {
-            color: colors.textPrimary,
+            color: colors.critical,
             fontSize: 14,
-            fontWeight: '600',
+            fontWeight: '700',
         },
         generateBtn: {
             flex: 2.2,
@@ -1930,9 +2343,11 @@ const createStyles = (
             letterSpacing: 0.2,
         },
         subModalOverlay: {
-            flex: 1,
-            backgroundColor: 'rgba(0,0,0,0.75)',
+            ...StyleSheet.absoluteFillObject,
+            backgroundColor: 'rgba(0,0,0,0.85)',
             justifyContent: 'flex-end',
+            zIndex: 1000,
+            elevation: 24,
         },
         subModalContent: {
             backgroundColor: colors.surface,
@@ -2174,71 +2589,341 @@ const createStyles = (
             fontSize: 11,
             fontWeight: '500',
         },
-        docTabBar: {
-            flexDirection: 'row',
-            paddingVertical: spacing.s,
+        docTabBarContainer: {
             borderBottomWidth: StyleSheet.hairlineWidth,
             borderBottomColor: colors.border + '60',
-            gap: 6,
+            paddingVertical: spacing.s,
+            marginHorizontal: -spacing.m,
+        },
+        docTabBarScrollContent: {
+            paddingHorizontal: spacing.m,
+            gap: 8,
+            flexDirection: 'row',
+            alignItems: 'center',
         },
         docTab: {
             flexDirection: 'row',
             alignItems: 'center',
-            gap: 4,
-            paddingHorizontal: 10,
-            paddingVertical: 6,
-            borderRadius: 8,
-            backgroundColor: colors.surfaceHighlight + '60',
+            gap: 6,
+            paddingHorizontal: 14,
+            paddingVertical: 8,
+            borderRadius: 10,
+            backgroundColor: mode === 'dark' ? 'rgba(255, 255, 255, 0.05)' : 'rgba(0, 0, 0, 0.05)',
+            borderWidth: 1,
+            borderColor: colors.border + '40',
         },
         docTabActive: {
-            backgroundColor: colors.accent + '20',
+            backgroundColor: '#D4AF37',
+            borderColor: '#D4AF37',
         },
         docTabText: {
             color: colors.textTertiary,
-            fontSize: 12,
-            fontWeight: '500',
+            fontSize: 12.5,
+            fontWeight: '600',
         },
         docTabTextActive: {
-            color: colors.accent,
-            fontWeight: '700',
+            color: '#000000',
+            fontWeight: '800',
         },
         previewContainer: {
             flex: 1,
             paddingVertical: spacing.m,
         },
         paperSheet: {
-            backgroundColor: colors.surfaceHighlight + '30',
-            padding: 16,
+            backgroundColor: mode === 'dark' ? '#0E131F' : '#FCFCFA',
+            padding: 18,
             borderRadius: 16,
-            borderWidth: 1,
-            borderColor: colors.border,
-            minHeight: 300,
+            borderWidth: 1.5,
+            borderColor: mode === 'dark' ? 'rgba(212, 175, 55, 0.28)' : 'rgba(212, 175, 55, 0.38)',
+            minHeight: 320,
+            shadowColor: '#000',
+            shadowOffset: { width: 0, height: 4 },
+            shadowOpacity: 0.1,
+            shadowRadius: 10,
+            elevation: 4,
         },
         courtBadgeHeader: {
+            flexDirection: 'row',
             alignItems: 'center',
-            paddingBottom: 10,
+            justifyContent: 'space-between',
+            paddingBottom: 12,
             borderBottomWidth: StyleSheet.hairlineWidth,
-            borderBottomColor: colors.border,
-            marginBottom: 12,
+            borderBottomColor: mode === 'dark' ? 'rgba(212, 175, 55, 0.25)' : 'rgba(212, 175, 55, 0.35)',
+            marginBottom: 16,
+        },
+        courtFolioLeft: {
+            flexDirection: 'row',
+            alignItems: 'center',
+            gap: 6,
         },
         courtBadgeText: {
             color: colors.accent,
-            fontSize: 12,
-            fontWeight: '700',
-            textAlign: 'center',
+            fontSize: 10.5,
+            fontWeight: '800',
+            letterSpacing: 0.8,
+        },
+        draftBadgePill: {
+            paddingHorizontal: 8,
+            paddingVertical: 3,
+            borderRadius: 6,
+            backgroundColor: colors.accent + '15',
+            borderWidth: 1,
+            borderColor: colors.accent + '35',
+        },
+        draftBadgeText: {
+            color: colors.accent,
+            fontSize: 9.5,
+            fontWeight: '800',
+            letterSpacing: 0.5,
         },
         paperHeading: {
             color: colors.textPrimary,
             fontSize: 13,
+            fontWeight: '800',
+            textAlign: 'center',
+            marginBottom: 14,
+            letterSpacing: 0.5,
+        },
+        documentBody: {
+            paddingLeft: 12,
+            borderLeftWidth: 2,
+            borderLeftColor: 'rgba(212, 175, 55, 0.35)',
+            marginVertical: 4,
+        },
+        courtMainTitle: {
+            color: colors.accent,
+            fontSize: 13.5,
+            fontWeight: '800',
+            textAlign: 'center',
+            marginVertical: 3,
+            letterSpacing: 0.8,
+            lineHeight: 20,
+            textTransform: 'uppercase',
+        },
+        courtJurisdictionTitle: {
+            color: colors.textSecondary,
+            fontSize: 11,
+            fontWeight: '700',
+            fontStyle: 'italic',
+            textAlign: 'center',
+            marginVertical: 2,
+            letterSpacing: 0.5,
+        },
+        courtCaseNumberTitle: {
+            color: colors.textPrimary,
+            fontSize: 13,
+            fontWeight: '800',
+            textAlign: 'center',
+            marginVertical: 4,
+            letterSpacing: 0.6,
+        },
+        courtCenteredHeading: {
+            color: colors.textPrimary,
+            fontSize: 13,
             fontWeight: '700',
             textAlign: 'center',
-            marginBottom: 12,
+            marginVertical: 3,
+            letterSpacing: 0.4,
+        },
+        matterOfContainer: {
+            marginVertical: 8,
+            paddingVertical: 4,
+            borderTopWidth: StyleSheet.hairlineWidth,
+            borderBottomWidth: StyleSheet.hairlineWidth,
+            borderTopColor: colors.border + '60',
+            borderBottomColor: colors.border + '60',
+        },
+        matterOfText: {
+            color: colors.accent,
+            fontSize: 11,
+            fontWeight: '800',
+            letterSpacing: 1.2,
+        },
+        versusContainer: {
+            flexDirection: 'row',
+            alignItems: 'center',
+            justifyContent: 'center',
+            marginVertical: 12,
+            gap: 10,
+        },
+        versusLine: {
+            flex: 1,
+            height: 1,
+            backgroundColor: colors.border + '90',
+        },
+        versusText: {
+            color: colors.accent,
+            fontSize: 11,
+            fontWeight: '800',
+            letterSpacing: 2,
+        },
+        rightAlignedRoleContainer: {
+            alignItems: 'flex-end',
+            marginVertical: 4,
+            paddingRight: 4,
+        },
+        roleText: {
+            color: colors.accent,
+            fontSize: 12,
+            fontWeight: '700',
+            fontStyle: 'italic',
+        },
+        petitionTitleContainer: {
+            alignItems: 'center',
+            justifyContent: 'center',
+            marginVertical: 14,
+            paddingVertical: 8,
+            borderTopWidth: 1,
+            borderBottomWidth: 1,
+            borderTopColor: colors.accent + '35',
+            borderBottomColor: colors.accent + '35',
+            backgroundColor: colors.accent + '08',
+            borderRadius: 6,
+        },
+        petitionTitleText: {
+            color: colors.accent,
+            fontSize: 12.5,
+            fontWeight: '800',
+            textAlign: 'center',
+            letterSpacing: 1.5,
+            textTransform: 'uppercase',
+        },
+        numberedParaRow: {
+            flexDirection: 'row',
+            marginVertical: 5,
+            alignItems: 'flex-start',
+        },
+        paraNumber: {
+            color: colors.accent,
+            fontSize: 13.5,
+            fontWeight: '700',
+            width: 28,
+            marginTop: 1,
+        },
+        paraText: {
+            flex: 1,
+            color: colors.textPrimary,
+            fontSize: 13.5,
+            lineHeight: 21,
+        },
+        prayerClauseRow: {
+            flexDirection: 'row',
+            marginVertical: 4,
+            paddingLeft: 12,
+            alignItems: 'flex-start',
+        },
+        prayerBullet: {
+            color: colors.accent,
+            fontSize: 12.5,
+            fontWeight: '700',
+            fontStyle: 'italic',
+            width: 24,
+            marginTop: 1,
+        },
+        prayerClauseText: {
+            flex: 1,
+            color: colors.textPrimary,
+            fontSize: 13,
+            lineHeight: 20,
+        },
+        signatureText: {
+            color: colors.textPrimary,
+            fontSize: 12,
+            fontWeight: '700',
+            marginVertical: 3,
+            textAlign: 'right',
+            letterSpacing: 0.3,
+        },
+        stampPlaceholderCard: {
+            flexDirection: 'row',
+            alignItems: 'center',
+            justifyContent: 'center',
+            gap: 8,
+            marginVertical: 10,
+            paddingVertical: 9,
+            paddingHorizontal: 14,
+            borderWidth: 1.5,
+            borderColor: 'rgba(212, 175, 55, 0.45)',
+            borderStyle: 'dashed',
+            borderRadius: 8,
+            backgroundColor: mode === 'dark' ? 'rgba(212, 175, 55, 0.08)' : 'rgba(212, 175, 55, 0.06)',
+        },
+        stampPlaceholderText: {
+            color: colors.accent,
+            fontSize: 11,
+            fontWeight: '800',
+            letterSpacing: 0.8,
+            textTransform: 'uppercase',
+        },
+        dualSignatureContainer: {
+            flexDirection: 'row',
+            alignItems: 'flex-start',
+            justifyContent: 'space-between',
+            marginVertical: 14,
+            paddingTop: 8,
+            gap: 16,
+        },
+        signatureColLeft: {
+            flex: 1,
+            alignItems: 'flex-start',
+        },
+        signatureColRight: {
+            flex: 1,
+            alignItems: 'flex-end',
+        },
+        signatureLine: {
+            width: '85%',
+            height: 1,
+            backgroundColor: colors.border + '90',
+            marginBottom: 6,
+        },
+        signatureColText: {
+            color: colors.textPrimary,
+            fontSize: 11.5,
+            fontWeight: '700',
+            letterSpacing: 0.3,
+            lineHeight: 17,
+        },
+        signatureColTextRight: {
+            color: colors.textPrimary,
+            fontSize: 11.5,
+            fontWeight: '700',
+            letterSpacing: 0.3,
+            textAlign: 'right',
+            lineHeight: 17,
+        },
+        salutationContainer: {
+            marginVertical: 8,
+            paddingVertical: 3,
+        },
+        salutationText: {
+            color: colors.textPrimary,
+            fontSize: 13,
+            fontWeight: '700',
+            fontStyle: 'italic',
+            lineHeight: 20,
+        },
+        datedAtText: {
+            color: colors.textSecondary,
+            fontSize: 12,
+            fontWeight: '600',
+            marginVertical: 6,
+            fontStyle: 'italic',
+        },
+        legalBodyParagraph: {
+            color: colors.textPrimary,
+            fontSize: 13.5,
+            lineHeight: 21,
+            marginVertical: 3,
+        },
+        legalBoldSpan: {
+            fontWeight: '700',
+            color: colors.textPrimary,
         },
         legalBodyText: {
             color: colors.textPrimary,
-            fontSize: 12,
-            lineHeight: 20,
-            fontFamily: Platform.OS === 'ios' ? 'Courier' : 'monospace',
+            fontSize: 13.5,
+            lineHeight: 21,
         },
         indexTablePreview: {
             borderWidth: 1,
@@ -2261,9 +2946,8 @@ const createStyles = (
             fontSize: 11,
         },
         actionBar: {
-            flexDirection: 'row',
-            alignItems: 'center',
-            gap: 8,
+            flexDirection: 'column',
+            gap: 10,
             paddingTop: 12,
             paddingBottom: bottomNavPadding,
             paddingHorizontal: spacing.m,
@@ -2277,29 +2961,12 @@ const createStyles = (
             shadowRadius: 8,
             elevation: 12,
         },
-        actionBtnOutline: {
-            flexDirection: 'row',
-            alignItems: 'center',
-            gap: 6,
-            paddingHorizontal: 14,
-            height: 50,
-            borderRadius: 14,
-            borderWidth: 1.5,
-            borderColor: colors.border,
-            backgroundColor: colors.surfaceHighlight,
-            justifyContent: 'center',
-        },
-        actionBtnTextOutline: {
-            color: colors.textPrimary,
-            fontSize: 13,
-            fontWeight: '600',
-        },
         actionBtnPrimary: {
-            flex: 1,
-            height: 50,
-            borderRadius: 14,
+            width: '100%',
+            height: 48,
+            borderRadius: 12,
             overflow: 'hidden',
-            shadowColor: colors.accent,
+            shadowColor: '#D4AF37',
             shadowOffset: { width: 0, height: 3 },
             shadowOpacity: 0.3,
             shadowRadius: 8,
@@ -2311,12 +2978,36 @@ const createStyles = (
             flexDirection: 'row',
             alignItems: 'center',
             justifyContent: 'center',
-            gap: 6,
+            gap: 8,
             paddingHorizontal: 12,
         },
         actionBtnTextPrimary: {
-            color: '#FFFFFF',
-            fontSize: 13,
+            color: '#000000',
+            fontSize: 13.5,
+            fontWeight: '800',
+            letterSpacing: 0.2,
+        },
+        actionToolsRow: {
+            flexDirection: 'row',
+            alignItems: 'center',
+            gap: 8,
+            width: '100%',
+        },
+        actionToolBtn: {
+            flex: 1,
+            flexDirection: 'row',
+            alignItems: 'center',
+            justifyContent: 'center',
+            gap: 6,
+            height: 42,
+            borderRadius: 10,
+            borderWidth: 1.2,
+            borderColor: colors.border,
+            backgroundColor: colors.surfaceHighlight,
+        },
+        actionToolBtnText: {
+            color: colors.textPrimary,
+            fontSize: 12.5,
             fontWeight: '700',
         },
     });

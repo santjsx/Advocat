@@ -23,36 +23,54 @@ import { AddDocumentScreen } from '../screens/AddDocumentScreen';
 import { DocumentDetailScreen } from '../screens/DocumentDetailScreen';
 import { PrivacyPolicyScreen } from '../screens/PrivacyPolicyScreen';
 import { HelpScreen } from '../screens/HelpScreen';
+import { ImageToPdfScreen } from '../screens/ImageToPdfScreen';
 import { RootStackParamList, MainTabParamList } from './types';
 
 const Stack = createNativeStackNavigator<RootStackParamList>();
 const Tab = createBottomTabNavigator<MainTabParamList>();
 
+import * as Haptics from 'expo-haptics';
+
 const MainTabs = () => {
     const { colors } = useTheme();
     const insets = useSafeAreaInsets();
-    const safeBottom = Math.max(insets.bottom, Platform.OS === 'android' ? 12 : 8);
+    
+    // Provide generous breathing room on Android (especially 3-button navbar mode) and iOS
+    const safeBottom = insets.bottom > 0 
+        ? insets.bottom + 6 
+        : (Platform.OS === 'android' ? 16 : 8);
 
     return (
         <Tab.Navigator
             screenOptions={{
                 headerShown: false,
+                sceneStyle: { backgroundColor: colors.background },
                 tabBarStyle: {
                     backgroundColor: colors.surface,
                     borderTopColor: colors.border,
                     borderTopWidth: 1,
-                    // Dynamic height: Content height (56) + safe bottom insets
-                    height: 56 + safeBottom,
+                    height: (Platform.OS === 'android' ? 64 : 58) + safeBottom,
                     paddingBottom: safeBottom,
-                    paddingTop: 6,
+                    paddingTop: 8,
+                    shadowColor: "#000",
+                    shadowOffset: { width: 0, height: -2 },
+                    shadowOpacity: 0.06,
+                    shadowRadius: 8,
+                    elevation: 8,
                 },
                 tabBarActiveTintColor: colors.accent,
                 tabBarInactiveTintColor: colors.textMuted,
                 tabBarLabelStyle: {
-                    fontSize: 10,
-                    fontWeight: '600',
-                    marginTop: 2,
+                    fontSize: 10.5,
+                    fontWeight: '700',
+                    marginTop: 3,
+                    marginBottom: 2,
                     letterSpacing: 0.3,
+                },
+            }}
+            screenListeners={{
+                tabPress: () => {
+                    Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
                 },
             }}
         >
@@ -61,8 +79,8 @@ const MainTabs = () => {
                 component={DashboardScreen}
                 options={{
                     tabBarLabel: 'Home',
-                    tabBarIcon: ({ color, size }) => (
-                        <MaterialCommunityIcons name="home-outline" size={size} color={color} />
+                    tabBarIcon: ({ color, size, focused }) => (
+                        <MaterialCommunityIcons name={focused ? "home" : "home-outline"} size={size + (focused ? 2 : 0)} color={color} />
                     ),
                 }}
             />
@@ -70,8 +88,8 @@ const MainTabs = () => {
                 name="Cases"
                 component={CaseListScreen}
                 options={{
-                    tabBarIcon: ({ color, size }) => (
-                        <MaterialCommunityIcons name="briefcase-outline" size={size} color={color} />
+                    tabBarIcon: ({ color, size, focused }) => (
+                        <MaterialCommunityIcons name={focused ? "briefcase" : "briefcase-outline"} size={size + (focused ? 2 : 0)} color={color} />
                     ),
                 }}
             />
@@ -79,8 +97,8 @@ const MainTabs = () => {
                 name="Deadlines"
                 component={AllDeadlinesScreen}
                 options={{
-                    tabBarIcon: ({ color, size }) => (
-                        <MaterialCommunityIcons name="clock-outline" size={size} color={color} />
+                    tabBarIcon: ({ color, size, focused }) => (
+                        <MaterialCommunityIcons name={focused ? "clock" : "clock-outline"} size={size + (focused ? 2 : 0)} color={color} />
                     ),
                 }}
             />
@@ -88,8 +106,8 @@ const MainTabs = () => {
                 name="Research"
                 component={ResearchScreen}
                 options={{
-                    tabBarIcon: ({ color, size }) => (
-                        <MaterialCommunityIcons name="scale-balance" size={size} color={color} />
+                    tabBarIcon: ({ color, size, focused }) => (
+                        <MaterialCommunityIcons name="scale-balance" size={size + (focused ? 2 : 0)} color={color} />
                     ),
                 }}
             />
@@ -97,8 +115,8 @@ const MainTabs = () => {
                 name="Analytics"
                 component={AnalyticsScreen}
                 options={{
-                    tabBarIcon: ({ color, size }) => (
-                        <MaterialCommunityIcons name="chart-bar" size={size} color={color} />
+                    tabBarIcon: ({ color, size, focused }) => (
+                        <MaterialCommunityIcons name={focused ? "chart-bar" : "chart-box-outline"} size={size + (focused ? 2 : 0)} color={color} />
                     ),
                 }}
             />
@@ -106,8 +124,8 @@ const MainTabs = () => {
                 name="Settings"
                 component={SettingsScreen}
                 options={{
-                    tabBarIcon: ({ color, size }) => (
-                        <MaterialCommunityIcons name="cog-outline" size={size} color={color} />
+                    tabBarIcon: ({ color, size, focused }) => (
+                        <MaterialCommunityIcons name={focused ? "cog" : "cog-outline"} size={size + (focused ? 2 : 0)} color={color} />
                     ),
                 }}
             />
@@ -131,6 +149,18 @@ export const RootNavigator = () => {
         fonts: DefaultTheme.fonts,
     };
 
+    const modalScreenOptions = {
+        presentation: (Platform.OS === 'ios' ? 'modal' : 'card') as 'modal' | 'card',
+        animation: (Platform.OS === 'ios' ? 'default' : 'slide_from_bottom') as 'default' | 'slide_from_bottom',
+        contentStyle: { backgroundColor: colors.background },
+    };
+
+    const cardScreenOptions = {
+        presentation: 'card' as const,
+        animation: 'slide_from_right' as const,
+        contentStyle: { backgroundColor: colors.background },
+    };
+
     return (
         <NavigationContainer theme={navTheme}>
             <Stack.Navigator
@@ -146,52 +176,63 @@ export const RootNavigator = () => {
                 <Stack.Screen
                     name="CaseDetail"
                     component={CaseDetailScreen}
-                    options={{ presentation: 'card' }}
+                    options={cardScreenOptions}
                 />
                 <Stack.Screen
                     name="AddCase"
                     component={AddCaseScreen}
-                    options={{ presentation: 'modal' }}
+                    options={modalScreenOptions}
                 />
                 <Stack.Screen
                     name="EditCase"
                     component={EditCaseScreen}
-                    options={{ presentation: 'modal' }}
+                    options={modalScreenOptions}
                 />
                 <Stack.Screen
                     name="AddDeadline"
                     component={AddDeadlineScreen}
-                    options={{ presentation: 'modal' }}
+                    options={modalScreenOptions}
                 />
                 <Stack.Screen
                     name="EditDeadline"
                     component={EditDeadlineScreen}
-                    options={{ presentation: 'modal' }}
+                    options={modalScreenOptions}
                 />
                 <Stack.Screen
                     name="Notifications"
                     component={NotificationsScreen}
-                    options={{ presentation: 'modal' }}
+                    options={modalScreenOptions}
                 />
                 <Stack.Screen
                     name="AddDocument"
                     component={AddDocumentScreen}
-                    options={{ presentation: 'modal' }}
+                    options={modalScreenOptions}
                 />
                 <Stack.Screen
                     name="DocumentDetail"
                     component={DocumentDetailScreen}
-                    options={{ presentation: 'card' }}
+                    options={cardScreenOptions}
                 />
                 <Stack.Screen
                     name="PrivacyPolicy"
                     component={PrivacyPolicyScreen}
-                    options={{ title: 'Privacy Policy' }}
+                    options={{
+                        ...cardScreenOptions,
+                        title: 'Privacy Policy'
+                    }}
+                />
+                <Stack.Screen
+                    name="ImageToPdf"
+                    component={ImageToPdfScreen}
+                    options={cardScreenOptions}
                 />
                 <Stack.Screen
                     name="Help"
                     component={HelpScreen}
-                    options={{ title: 'User Guide' }}
+                    options={{
+                        ...cardScreenOptions,
+                        title: 'User Guide'
+                    }}
                 />
             </Stack.Navigator>
         </NavigationContainer>

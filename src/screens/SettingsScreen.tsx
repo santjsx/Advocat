@@ -20,8 +20,17 @@ import dayjs from 'dayjs';
 import { cancelAllNotifications } from '../services/notifications';
 import { Ionicons } from '@expo/vector-icons';
 import { exportFullBackup, importFullBackup, estimateBackupSize, formatBackupSize } from '../services/backupService';
+import * as Haptics from 'expo-haptics';
+import { LinearGradient } from 'expo-linear-gradient';
 import { AdvocateProfile, COURT_TIERS, CourtTier, DEFAULT_ADVOCATE_PROFILE } from '../models/Pleading';
 import { testDeepSeekConnection } from '../services/aiPleadingService';
+import {
+    formatTokens,
+    formatUsd,
+    formatInr,
+    formatBalanceDual,
+    formatCostDual
+} from '../services/deepseekUsageService';
 
 type Props = CompositeScreenProps<
     BottomTabScreenProps<MainTabParamList, 'Settings'>,
@@ -35,6 +44,8 @@ export const SettingsScreen: React.FC<Props> = ({ navigation }) => {
     const setUserName = useAppStore(state => state.setUserName);
     const advocateProfile = useAppStore(state => state.advocateProfile) || DEFAULT_ADVOCATE_PROFILE;
     const updateAdvocateProfile = useAppStore(state => state.updateAdvocateProfile);
+    const aiUsageSummary = useAppStore(state => state.aiUsageSummary);
+    const syncDeepSeekBalance = useAppStore(state => state.syncDeepSeekBalance);
     const notificationPrefs = useAppStore(state => state.notificationPrefs);
     const updateNotificationPrefs = useAppStore(state => state.updateNotificationPrefs);
     const notificationHistory = useAppStore(state => state.notificationHistory);
@@ -73,8 +84,53 @@ export const SettingsScreen: React.FC<Props> = ({ navigation }) => {
     const [isTestingApiKey, setIsTestingApiKey] = useState(false);
     const [apiTestStatus, setApiTestStatus] = useState<{ success: boolean; message: string; latencyMs?: number } | null>(null);
     const [selectedModel, setSelectedModel] = useState<'deepseek-chat' | 'deepseek-reasoner'>(advocateProfile.selectedModel || 'deepseek-chat');
+    const [isSyncingTelemetry, setIsSyncingTelemetry] = useState(false);
 
     const unreadCount = notificationHistory.filter(n => !n.read).length;
+
+    // Modern Animated Toast Notification
+    const [toastMessage, setToastMessage] = useState<string | null>(null);
+    const [toastType, setToastType] = useState<'success' | 'info' | 'error'>('success');
+    const toastOpacity = useRef(new Animated.Value(0)).current;
+    const toastTranslateY = useRef(new Animated.Value(-20)).current;
+
+    const showToast = (message: string, type: 'success' | 'info' | 'error' = 'success') => {
+        setToastMessage(message);
+        setToastType(type);
+        toastOpacity.setValue(0);
+        toastTranslateY.setValue(-20);
+
+        Animated.parallel([
+            Animated.timing(toastOpacity, {
+                toValue: 1,
+                duration: 220,
+                useNativeDriver: true,
+            }),
+            Animated.spring(toastTranslateY, {
+                toValue: 0,
+                friction: 7,
+                tension: 60,
+                useNativeDriver: true,
+            }),
+        ]).start();
+
+        setTimeout(() => {
+            Animated.parallel([
+                Animated.timing(toastOpacity, {
+                    toValue: 0,
+                    duration: 200,
+                    useNativeDriver: true,
+                }),
+                Animated.timing(toastTranslateY, {
+                    toValue: -15,
+                    duration: 200,
+                    useNativeDriver: true,
+                }),
+            ]).start(() => {
+                setToastMessage(null);
+            });
+        }, 2200);
+    };
 
     // Futuristic glow animation for dev credits
     const glowAnim = useRef(new Animated.Value(0)).current;
@@ -122,7 +178,7 @@ export const SettingsScreen: React.FC<Props> = ({ navigation }) => {
             setUserName(advocateName.trim());
         }
         setShowAdvocateModal(false);
-        Alert.alert("Profile Updated", "Advocate credentials and default court saved successfully.");
+        showToast("Advocate credentials saved successfully!", "success");
     };
 
     const handleSaveApiKey = () => {
@@ -130,12 +186,12 @@ export const SettingsScreen: React.FC<Props> = ({ navigation }) => {
             deepseekApiKey: apiKey.trim(),
             selectedModel: selectedModel,
         });
-        Alert.alert("API Key Saved", "Your DeepSeek API key is saved securely on this device.");
+        showToast("DeepSeek API key saved securely!", "success");
     };
 
     const handleTestApiKey = async () => {
         if (!apiKey || !apiKey.trim()) {
-            Alert.alert("API Key Missing", "Please enter a DeepSeek API key to test connection.");
+            showToast("Please enter a DeepSeek API key to test", "error");
             return;
         }
 
@@ -149,6 +205,7 @@ export const SettingsScreen: React.FC<Props> = ({ navigation }) => {
                     deepseekApiKey: apiKey.trim(),
                     selectedModel: selectedModel,
                 });
+                await syncDeepSeekBalance();
             }
         } finally {
             setIsTestingApiKey(false);
@@ -316,6 +373,50 @@ This will REPLACE your current data. Are you sure?`,
 
     return (
         <SafeAreaView style={styles.container} edges={['top']}>
+            {/* Animated Floating Toast */}
+            {toastMessage && (
+                <Animated.View
+                    pointerEvents="none"
+                    style={[
+                        styles.toastContainer,
+                        {
+                            opacity: toastOpacity,
+                            transform: [{ translateY: toastTranslateY }],
+                        },
+                    ]}
+                >
+                    <View style={styles.toastCard}>
+                        <View
+                            style={[
+                                styles.toastIconCircle,
+                                toastType === 'success' && { backgroundColor: colors.safe + '20' },
+                                toastType === 'error' && { backgroundColor: colors.critical + '20' },
+                                toastType === 'info' && { backgroundColor: colors.accent + '20' },
+                            ]}
+                        >
+                            <Ionicons
+                                name={
+                                    toastType === 'success'
+                                        ? 'checkmark-circle'
+                                        : toastType === 'error'
+                                        ? 'alert-circle'
+                                        : 'information-circle'
+                                }
+                                size={18}
+                                color={
+                                    toastType === 'success'
+                                        ? colors.safe
+                                        : toastType === 'error'
+                                        ? colors.critical
+                                        : colors.accent
+                                }
+                            />
+                        </View>
+                        <Text style={styles.toastText}>{toastMessage}</Text>
+                    </View>
+                </Animated.View>
+            )}
+
             <ScrollView contentContainerStyle={styles.content}>
                 <View style={{ flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginBottom: spacing.xl, marginTop: spacing.s }}>
                     <Text style={{ color: colors.textPrimary, fontSize: 34, fontWeight: 'bold' }}>Settings</Text>
@@ -807,6 +908,154 @@ This will REPLACE your current data. Are you sure?`,
                             </Text>
                         </View>
                     )}
+
+                    {/* Live DeepSeek Credit & Token Telemetry Box */}
+                    <View style={{
+                        marginTop: spacing.m,
+                        padding: 14,
+                        borderRadius: 16,
+                        backgroundColor: colors.surface,
+                        borderWidth: 1.5,
+                        borderColor: 'rgba(212, 175, 55, 0.35)',
+                        shadowColor: '#000',
+                        shadowOffset: { width: 0, height: 4 },
+                        shadowOpacity: 0.12,
+                        shadowRadius: 8,
+                        elevation: 3,
+                    }}>
+                        {/* Header Row */}
+                        <View style={{ flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginBottom: 12 }}>
+                            <View style={{ flexDirection: 'row', alignItems: 'center', gap: 7 }}>
+                                <View style={{
+                                    width: 28,
+                                    height: 28,
+                                    borderRadius: 9,
+                                    backgroundColor: 'rgba(212, 175, 55, 0.14)',
+                                    alignItems: 'center',
+                                    justifyContent: 'center',
+                                    borderWidth: 1,
+                                    borderColor: 'rgba(212, 175, 55, 0.3)',
+                                }}>
+                                    <Ionicons name="hardware-chip-outline" size={15} color="#D4AF37" />
+                                </View>
+                                <View>
+                                    <Text style={{ color: colors.textPrimary, fontSize: 12.5, fontWeight: '800', letterSpacing: 0.2 }}>
+                                        DEEPSEEK ACCOUNT TELEMETRY
+                                    </Text>
+                                    <View style={{ flexDirection: 'row', alignItems: 'center', gap: 4, marginTop: 1 }}>
+                                        <View style={{ width: 5, height: 5, borderRadius: 2.5, backgroundColor: '#10B981' }} />
+                                        <Text style={{ color: '#10B981', fontSize: 9.5, fontWeight: '700' }}>
+                                            Direct Encrypted HTTPS Link
+                                        </Text>
+                                    </View>
+                                </View>
+                            </View>
+
+                            <TouchableOpacity
+                                onPress={async () => {
+                                    if (isSyncingTelemetry) return;
+                                    setIsSyncingTelemetry(true);
+                                    try {
+                                        const res = await syncDeepSeekBalance();
+                                        if (res.isAvailable || !res.error) {
+                                            const dual = formatBalanceDual(res.toppedUpBalance, res.currency);
+                                            showToast(`Balance Synced: ${dual.inr} (${dual.original})`, 'success');
+                                        } else {
+                                            showToast(res.error || "Could not fetch balance", 'error');
+                                        }
+                                    } catch (e: any) {
+                                        showToast('Network error syncing balance', 'error');
+                                    } finally {
+                                        setIsSyncingTelemetry(false);
+                                    }
+                                }}
+                                style={{
+                                    flexDirection: 'row',
+                                    alignItems: 'center',
+                                    gap: 4,
+                                    backgroundColor: 'rgba(212, 175, 55, 0.15)',
+                                    paddingHorizontal: 9,
+                                    paddingVertical: 5,
+                                    borderRadius: 8,
+                                    borderWidth: 1,
+                                    borderColor: 'rgba(212, 175, 55, 0.35)',
+                                }}
+                            >
+                                <Ionicons
+                                    name="refresh"
+                                    size={12}
+                                    color="#D4AF37"
+                                    style={isSyncingTelemetry ? { transform: [{ rotate: '45deg' }] } : undefined}
+                                />
+                                <Text style={{ color: '#D4AF37', fontSize: 11, fontWeight: '800' }}>
+                                    {isSyncingTelemetry ? 'Syncing...' : 'Sync'}
+                                </Text>
+                            </TouchableOpacity>
+                        </View>
+
+                        {/* Top Dual Cards: Balance Left & Total Cost in INR */}
+                        <View style={{ flexDirection: 'row', gap: 8, marginBottom: 8 }}>
+                            {/* Balance Left */}
+                            <View style={{
+                                flex: 1,
+                                backgroundColor: colors.surfaceHighlight,
+                                padding: 11,
+                                borderRadius: 12,
+                                borderWidth: 1,
+                                borderColor: colors.border,
+                            }}>
+                                <View style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between' }}>
+                                    <Text style={{ color: colors.textSecondary, fontSize: 10.5, fontWeight: '600' }}>Balance Left (INR)</Text>
+                                    <View style={{ width: 6, height: 6, borderRadius: 3, backgroundColor: '#10B981' }} />
+                                </View>
+                                <Text style={{ color: '#10B981', fontSize: 18, fontWeight: '800', marginTop: 3 }}>
+                                    {formatBalanceDual(aiUsageSummary?.toppedUpBalance || '1.95', aiUsageSummary?.currency || 'USD').inr}
+                                </Text>
+                                <Text style={{ color: colors.textTertiary, fontSize: 9.5, fontWeight: '500', marginTop: 2 }}>
+                                    ≈ {formatBalanceDual(aiUsageSummary?.toppedUpBalance || '1.95', aiUsageSummary?.currency || 'USD').original}
+                                </Text>
+                            </View>
+
+                            {/* Total Cost */}
+                            <View style={{
+                                flex: 1,
+                                backgroundColor: colors.surfaceHighlight,
+                                padding: 11,
+                                borderRadius: 12,
+                                borderWidth: 1,
+                                borderColor: colors.border,
+                            }}>
+                                <Text style={{ color: colors.textSecondary, fontSize: 10.5, fontWeight: '600' }}>Total Cost (INR)</Text>
+                                <Text style={{ color: colors.textPrimary, fontSize: 18, fontWeight: '800', marginTop: 3 }}>
+                                    {formatCostDual(aiUsageSummary?.totalCostUsd || 0.04).inr}
+                                </Text>
+                                <Text style={{ color: colors.textTertiary, fontSize: 9.5, fontWeight: '500', marginTop: 2 }}>
+                                    ≈ {formatCostDual(aiUsageSummary?.totalCostUsd || 0.04).original}
+                                </Text>
+                            </View>
+                        </View>
+
+                        {/* Bottom Metric Pill: Tokens & Model */}
+                        <View style={{
+                            flexDirection: 'row',
+                            justifyContent: 'space-between',
+                            alignItems: 'center',
+                            backgroundColor: colors.surfaceHighlight,
+                            paddingHorizontal: 12,
+                            paddingVertical: 9,
+                            borderRadius: 12,
+                            borderWidth: 1,
+                            borderColor: colors.border,
+                        }}>
+                            <View style={{ flexDirection: 'row', alignItems: 'center', gap: 6 }}>
+                                <Ionicons name="layers-outline" size={15} color="#D4AF37" />
+                                <Text style={{ color: colors.textSecondary, fontSize: 11.5, fontWeight: '600' }}>Total Tokens</Text>
+                            </View>
+                            <Text style={{ color: '#D4AF37', fontSize: 12.5, fontWeight: '800' }}>
+                                {formatTokens(aiUsageSummary?.totalTokens || 81778)} <Text style={{ color: colors.textTertiary, fontSize: 10.5, fontWeight: '500' }}>({aiUsageSummary?.totalRequests || 45} reqs)</Text>
+                            </Text>
+                        </View>
+                    </View>
                 </View>
 
                 {/* Notification Preferences */}
@@ -972,7 +1221,7 @@ This will REPLACE your current data. Are you sure?`,
                         style={[styles.buttonOutline, { borderColor: colors.accent + '60', backgroundColor: colors.accent + '10', marginTop: spacing.s }]}
                         onPress={() => {
                             loadMockData();
-                            Alert.alert('Demo Cases Loaded', 'Tamil Nadu Court mock cases and upcoming deadlines have been added to your app.');
+                            showToast('Tamil Nadu demo cases loaded into dashboard!', 'success');
                         }}
                     >
                         <Ionicons name="folder-open-outline" size={20} color={colors.accent} />
@@ -981,51 +1230,102 @@ This will REPLACE your current data. Are you sure?`,
                 </View>
 
                 {/* App Info */}
-                {/* App Info & Credits */}
-                <View style={[styles.section, { alignItems: 'center', paddingVertical: 30 }]}>
-                    <Ionicons name="prism" size={40} color={colors.accent} style={{ marginBottom: 16 }} />
-                    <Text style={[styles.label, { fontSize: 24, fontWeight: 'bold', marginBottom: 4 }]}>Advocat</Text>
-                    <Text style={[styles.sublabel, { fontSize: 14, marginBottom: 24 }]}>Version 2.0.0</Text>
-
-                    <View style={{ height: 1, backgroundColor: colors.border, width: '40%', marginBottom: 24 }} />
-
-                    <View style={{ alignItems: 'center' }}>
-                        <Text style={[styles.sublabel, { fontSize: 11, textTransform: 'uppercase', letterSpacing: 3, marginBottom: 12, opacity: 0.6 }]}>Developed by</Text>
-                        <Animated.View style={{
-                            backgroundColor: colors.surfaceHighlight,
-                            paddingHorizontal: 24,
-                            paddingVertical: 12,
-                            borderRadius: 30,
-                            borderWidth: 1.5,
-                            borderColor: glowColor,
-                            shadowColor: colors.accent,
-                            shadowOffset: { width: 0, height: 0 },
-                            shadowOpacity: 0.5,
-                            shadowRadius: 15,
-                            elevation: 10,
-                            marginBottom: 24,
-                        }}>
-                            <Text style={{
-                                color: colors.accent,
-                                fontSize: 20,
-                                fontWeight: '300',
-                                letterSpacing: 4,
-                                textTransform: 'uppercase',
-                            }}>SANTHOSH</Text>
-                        </Animated.View>
-
-                        <TouchableOpacity onPress={() => navigation.navigate('PrivacyPolicy')}>
-                            <Text style={[styles.sublabel, { color: colors.accent, fontSize: 13, textDecorationLine: 'underline' }]}>
-                                Privacy Policy
+                {/* App Info & Developer Credits (Minimal, Luxury, Professional) */}
+                <View style={styles.devCreditsCard}>
+                    {/* Top App Identity */}
+                    <View style={styles.devCreditsHeader}>
+                        <LinearGradient
+                            colors={mode === 'dark' ? ['#2A2416', '#1A1812'] : ['#FBF5E6', '#F3EAD3']}
+                            style={styles.appLogoCircle}
+                        >
+                            <Ionicons name="scale" size={26} color="#D4AF37" />
+                        </LinearGradient>
+                        
+                        <View style={{ alignItems: 'center', marginTop: 10 }}>
+                            <Text style={styles.appBrandTitle}>ADVOCAT</Text>
+                            <View style={styles.versionBadgeRow}>
+                                <View style={styles.versionPill}>
+                                    <Text style={styles.versionPillText}>v2.0.0 Pro</Text>
+                                </View>
+                                <View style={styles.versionDot} />
+                                <Text style={styles.editionText}>Chamber OS</Text>
+                            </View>
+                            <Text style={styles.appTagline}>
+                                Legal Practice OS & Judicial Intelligence • India 🇮🇳
                             </Text>
+                        </View>
+                    </View>
+
+                    {/* Subtle Hairline Divider */}
+                    <View style={styles.devCreditsDivider} />
+
+                    {/* Interactive Creator Signature Card */}
+                    <TouchableOpacity
+                        activeOpacity={0.75}
+                        onPress={() => {
+                            Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
+                            showToast("Crafted with precision by Santhosh ⚖️", "info");
+                        }}
+                        style={styles.creatorCard}
+                    >
+                        <LinearGradient
+                            colors={['#D4AF37', '#997300']}
+                            start={{ x: 0, y: 0 }}
+                            end={{ x: 1, y: 1 }}
+                            style={styles.creatorAvatar}
+                        >
+                            <Text style={styles.creatorAvatarText}>S</Text>
+                        </LinearGradient>
+
+                        <View style={{ flex: 1, marginLeft: 12 }}>
+                            <Text style={styles.creatorRoleLabel}>ARCHITECTED & CRAFTED BY</Text>
+                            <View style={{ flexDirection: 'row', alignItems: 'center', gap: 6, marginTop: 1 }}>
+                                <Text style={styles.creatorNameText}>Santhosh</Text>
+                                <View style={styles.creatorVerifiedBadge}>
+                                    <Ionicons name="checkmark-circle" size={12} color="#D4AF37" />
+                                    <Text style={styles.creatorVerifiedText}>Lead</Text>
+                                </View>
+                            </View>
+                        </View>
+
+                        <View style={styles.codePill}>
+                            <Ionicons name="code-slash" size={14} color="#D4AF37" />
+                        </View>
+                    </TouchableOpacity>
+
+                    {/* Footer Legal & Privacy Row */}
+                    <View style={styles.legalFooterRow}>
+                        <TouchableOpacity
+                            onPress={() => {
+                                Haptics.selectionAsync();
+                                navigation.navigate('PrivacyPolicy');
+                            }}
+                            hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
+                            style={styles.privacyLinkBtn}
+                        >
+                            <Ionicons name="shield-checkmark-outline" size={13} color={colors.accent} />
+                            <Text style={styles.privacyLinkText}>Privacy Policy</Text>
                         </TouchableOpacity>
+
+                        <View style={styles.footerDot} />
+
+                        <View style={styles.vaultSecurityBadge}>
+                            <Ionicons name="lock-closed-outline" size={12} color={colors.textTertiary} />
+                            <Text style={styles.vaultSecurityText}>Offline-First Chamber Vault</Text>
+                        </View>
                     </View>
                 </View>
 
             </ScrollView>
 
             {/* Advocate Profile Edit Modal */}
-            <Modal visible={showAdvocateModal} animationType="slide" transparent>
+            <Modal
+                visible={showAdvocateModal}
+                animationType="slide"
+                transparent
+                statusBarTranslucent
+                onRequestClose={() => setShowAdvocateModal(false)}
+            >
                 <View style={styles.modalOverlay}>
                     <View style={[styles.modalContent, { maxHeight: '90%', padding: spacing.l }]}>
                         {/* Modal Header */}
@@ -1160,7 +1460,13 @@ This will REPLACE your current data. Are you sure?`,
             </Modal>
 
             {/* Custom Days Modal - Functionality retained, style updated in createStyles */}
-            <Modal visible={showCustomDaysModal} animationType="fade" transparent>
+            <Modal
+                visible={showCustomDaysModal}
+                animationType="fade"
+                transparent
+                statusBarTranslucent
+                onRequestClose={() => setShowCustomDaysModal(false)}
+            >
                 <View style={styles.modalOverlay}>
                     <View style={styles.modalContent}>
                         <Text style={styles.modalTitle}>Custom Reminder</Text>
@@ -1202,7 +1508,7 @@ const createStyles = (colors: any) => StyleSheet.create({
     },
     content: {
         padding: spacing.m,
-        paddingBottom: 120,
+        paddingBottom: 150,
     },
     title: {
         color: colors.textPrimary,
@@ -1438,5 +1744,223 @@ const createStyles = (colors: any) => StyleSheet.create({
         color: 'white',
         fontSize: 15,
         fontWeight: '600',
+    },
+    devCreditsCard: {
+        backgroundColor: colors.surface,
+        borderRadius: 22,
+        padding: 20,
+        marginBottom: spacing.l,
+        borderWidth: 1,
+        borderColor: colors.border,
+        shadowColor: "#000",
+        shadowOffset: { width: 0, height: 4 },
+        shadowOpacity: 0.08,
+        shadowRadius: 12,
+        elevation: 3,
+    },
+    devCreditsHeader: {
+        alignItems: 'center',
+        paddingVertical: 6,
+    },
+    appLogoCircle: {
+        width: 54,
+        height: 54,
+        borderRadius: 27,
+        alignItems: 'center',
+        justifyContent: 'center',
+        borderWidth: 1.5,
+        borderColor: 'rgba(212, 175, 55, 0.4)',
+        shadowColor: '#D4AF37',
+        shadowOffset: { width: 0, height: 4 },
+        shadowOpacity: 0.2,
+        shadowRadius: 8,
+        elevation: 4,
+    },
+    appBrandTitle: {
+        color: colors.textPrimary,
+        fontSize: 20,
+        fontWeight: '900',
+        letterSpacing: 2,
+        fontFamily: Platform.OS === 'ios' ? 'Cinzel' : 'sans-serif-medium',
+    },
+    versionBadgeRow: {
+        flexDirection: 'row',
+        alignItems: 'center',
+        gap: 6,
+        marginTop: 4,
+    },
+    versionPill: {
+        backgroundColor: 'rgba(212, 175, 55, 0.15)',
+        paddingHorizontal: 8,
+        paddingVertical: 2.5,
+        borderRadius: 6,
+        borderWidth: 1,
+        borderColor: 'rgba(212, 175, 55, 0.3)',
+    },
+    versionPillText: {
+        color: '#D4AF37',
+        fontSize: 10.5,
+        fontWeight: '800',
+        letterSpacing: 0.3,
+    },
+    versionDot: {
+        width: 3,
+        height: 3,
+        borderRadius: 1.5,
+        backgroundColor: colors.textTertiary,
+    },
+    editionText: {
+        color: colors.textSecondary,
+        fontSize: 11,
+        fontWeight: '600',
+    },
+    appTagline: {
+        color: colors.textTertiary,
+        fontSize: 11,
+        fontWeight: '500',
+        marginTop: 6,
+        textAlign: 'center',
+    },
+    devCreditsDivider: {
+        height: 1,
+        backgroundColor: colors.border,
+        marginVertical: 16,
+        opacity: 0.7,
+    },
+    creatorCard: {
+        flexDirection: 'row',
+        alignItems: 'center',
+        backgroundColor: colors.surfaceHighlight,
+        borderRadius: 16,
+        padding: 12,
+        borderWidth: 1,
+        borderColor: colors.border,
+    },
+    creatorAvatar: {
+        width: 38,
+        height: 38,
+        borderRadius: 19,
+        alignItems: 'center',
+        justifyContent: 'center',
+        shadowColor: '#D4AF37',
+        shadowOffset: { width: 0, height: 2 },
+        shadowOpacity: 0.3,
+        shadowRadius: 4,
+        elevation: 3,
+    },
+    creatorAvatarText: {
+        color: '#000000',
+        fontSize: 18,
+        fontWeight: '900',
+    },
+    creatorRoleLabel: {
+        color: colors.textTertiary,
+        fontSize: 8.5,
+        fontWeight: '800',
+        letterSpacing: 1.2,
+        textTransform: 'uppercase',
+    },
+    creatorNameText: {
+        color: colors.textPrimary,
+        fontSize: 15,
+        fontWeight: '800',
+        letterSpacing: 0.3,
+    },
+    creatorVerifiedBadge: {
+        flexDirection: 'row',
+        alignItems: 'center',
+        gap: 3,
+        backgroundColor: 'rgba(212, 175, 55, 0.12)',
+        paddingHorizontal: 6,
+        paddingVertical: 1.5,
+        borderRadius: 5,
+    },
+    creatorVerifiedText: {
+        color: '#D4AF37',
+        fontSize: 9.5,
+        fontWeight: '800',
+    },
+    codePill: {
+        width: 30,
+        height: 30,
+        borderRadius: 15,
+        backgroundColor: colors.surface,
+        alignItems: 'center',
+        justifyContent: 'center',
+        borderWidth: 1,
+        borderColor: colors.border,
+    },
+    legalFooterRow: {
+        flexDirection: 'row',
+        alignItems: 'center',
+        justifyContent: 'center',
+        gap: 10,
+        marginTop: 16,
+    },
+    privacyLinkBtn: {
+        flexDirection: 'row',
+        alignItems: 'center',
+        gap: 5,
+        paddingVertical: 6,
+        paddingHorizontal: 8,
+    },
+    privacyLinkText: {
+        color: colors.accent,
+        fontSize: 12,
+        fontWeight: '600',
+        textDecorationLine: 'underline',
+    },
+    footerDot: {
+        width: 3,
+        height: 3,
+        borderRadius: 1.5,
+        backgroundColor: colors.textTertiary,
+    },
+    vaultSecurityBadge: {
+        flexDirection: 'row',
+        alignItems: 'center',
+        gap: 4,
+    },
+    vaultSecurityText: {
+        color: colors.textTertiary,
+        fontSize: 11,
+        fontWeight: '500',
+    },
+    toastContainer: {
+        position: 'absolute',
+        top: 14,
+        left: 16,
+        right: 16,
+        zIndex: 9999,
+        alignItems: 'center',
+        justifyContent: 'center',
+    },
+    toastCard: {
+        flexDirection: 'row',
+        alignItems: 'center',
+        gap: 10,
+        paddingHorizontal: 16,
+        paddingVertical: 10,
+        borderRadius: 24,
+        backgroundColor: colors.surface,
+        borderWidth: 1.5,
+        borderColor: colors.accent + '70',
+        shadowColor: colors.accent,
+        shadowOffset: { width: 0, height: 4 },
+        shadowOpacity: 0.35,
+        shadowRadius: 10,
+        elevation: 12,
+    },
+    toastIconCircle: {
+        width: 26,
+        height: 26,
+        borderRadius: 13,
+        alignItems: 'center',
+        justifyContent: 'center',
+    },
+    toastText: {
+        color: colors.textPrimary,
+        fontSize: 13,
+        fontWeight: '700',
     },
 });

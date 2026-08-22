@@ -13,14 +13,17 @@ import dayjs from 'dayjs';
 import * as Crypto from 'expo-crypto';
 import { CaseType, CASE_TYPES, CaseStatus, CaseStage, CASE_STAGES, Case, TimelineEvent, LegalSection, LegalActType, LEGAL_ACTS } from '../models/Case';
 import { SECTION_DATABASE } from '../data/legalSections';
-import { MaterialCommunityIcons } from '@expo/vector-icons';
+import { MaterialCommunityIcons, Ionicons } from '@expo/vector-icons';
+import * as Haptics from 'expo-haptics';
 import 'react-native-get-random-values';
 import { v4 as uuidv4 } from 'uuid';
+import { useToast } from '../context/ToastContext';
 
 type Props = NativeStackScreenProps<RootStackParamList, 'AddCase'>;
 
 export const AddCaseScreen: React.FC<Props> = ({ navigation }) => {
     const { colors, spacing, layout } = useTheme();
+    const { showToast } = useToast();
     const addCase = useAppStore(state => state.addCase);
 
     const [name, setName] = useState('');
@@ -48,10 +51,8 @@ export const AddCaseScreen: React.FC<Props> = ({ navigation }) => {
     const [sectionDesc, setSectionDesc] = useState('');
     const [showActPicker, setShowActPicker] = useState(false);
 
-    // Auto-fill Description
-    // Auto-fill Description Removed
-
     const [errors, setErrors] = useState<Record<string, string>>({});
+    const [isSaving, setIsSaving] = useState(false);
 
     const styles = createStyles(colors, spacing, layout);
 
@@ -67,11 +68,17 @@ export const AddCaseScreen: React.FC<Props> = ({ navigation }) => {
     };
 
     const handleSave = () => {
+        if (isSaving) return;
+
         if (!validate()) {
-            Alert.alert("Validation Error", "Please fill all required fields.");
+            showToast({
+                message: 'Please fill all required fields.',
+                type: 'error'
+            });
             return;
         }
 
+        setIsSaving(true);
         const now = new Date().toISOString();
         const caseId = Crypto.randomUUID();
 
@@ -107,6 +114,10 @@ export const AddCaseScreen: React.FC<Props> = ({ navigation }) => {
         };
 
         addCase(newCase);
+        showToast({
+            message: 'Case created successfully.',
+            type: 'success'
+        });
         navigation.goBack();
     };
 
@@ -186,12 +197,28 @@ export const AddCaseScreen: React.FC<Props> = ({ navigation }) => {
     return (
         <SafeAreaView style={styles.container} edges={['top', 'bottom']}>
             <View style={styles.header}>
-                <TouchableOpacity onPress={() => navigation.goBack()} style={[styles.headerButton, styles.cancelButton]}>
+                <TouchableOpacity
+                    onPress={() => {
+                        Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
+                        navigation.goBack();
+                    }}
+                    style={[styles.headerButton, styles.cancelButton]}
+                    activeOpacity={0.7}
+                    accessibilityLabel="Cancel creating new case"
+                >
+                    <Ionicons name="close" size={15} color={colors.critical} />
                     <Text style={[styles.headerButtonText, styles.cancelButtonText]}>Cancel</Text>
                 </TouchableOpacity>
                 <Text style={styles.title}>New Case</Text>
-                <TouchableOpacity onPress={handleSave} style={[styles.headerButton, styles.saveButton]}>
-                    <Text style={[styles.headerButtonText, styles.saveButtonText]}>Save</Text>
+                <TouchableOpacity
+                    onPress={handleSave}
+                    disabled={isSaving}
+                    style={[styles.headerButton, styles.saveButton, isSaving && { opacity: 0.6 }]}
+                    activeOpacity={0.85}
+                >
+                    <Text style={[styles.headerButtonText, styles.saveButtonText]}>
+                        {isSaving ? 'Saving...' : 'Save'}
+                    </Text>
                 </TouchableOpacity>
             </View>
 
@@ -375,7 +402,13 @@ export const AddCaseScreen: React.FC<Props> = ({ navigation }) => {
             </KeyboardAvoidingView>
 
             {/* Case Type Modal */}
-            <Modal visible={showTypeModal} animationType="slide" transparent>
+            <Modal
+                visible={showTypeModal}
+                animationType="slide"
+                transparent
+                statusBarTranslucent
+                onRequestClose={() => setShowTypeModal(false)}
+            >
                 <View style={styles.modalOverlay}>
                     <View style={styles.modalContent}>
                         <Text style={styles.modalTitle}>Select Case Type</Text>
@@ -404,7 +437,13 @@ export const AddCaseScreen: React.FC<Props> = ({ navigation }) => {
             </Modal>
 
             {/* Case Stage Modal */}
-            <Modal visible={showStageModal} animationType="slide" transparent>
+            <Modal
+                visible={showStageModal}
+                animationType="slide"
+                transparent
+                statusBarTranslucent
+                onRequestClose={() => setShowStageModal(false)}
+            >
                 <View style={styles.modalOverlay}>
                     <View style={styles.modalContent}>
                         <Text style={styles.modalTitle}>Select Case Stage</Text>
@@ -433,7 +472,13 @@ export const AddCaseScreen: React.FC<Props> = ({ navigation }) => {
             </Modal>
 
             {/* Add Section Modal */}
-            <Modal visible={showSectionModal} animationType="slide" transparent>
+            <Modal
+                visible={showSectionModal}
+                animationType="slide"
+                transparent
+                statusBarTranslucent
+                onRequestClose={() => setShowSectionModal(false)}
+            >
                 <KeyboardAvoidingView
                     behavior={Platform.OS === 'ios' ? 'padding' : 'height'}
                     style={{ flex: 1 }}
@@ -483,7 +528,13 @@ export const AddCaseScreen: React.FC<Props> = ({ navigation }) => {
             </Modal>
 
             {/* Act Picker Modal */}
-            <Modal visible={showActPicker} animationType="fade" transparent>
+            <Modal
+                visible={showActPicker}
+                animationType="fade"
+                transparent
+                statusBarTranslucent
+                onRequestClose={() => setShowActPicker(false)}
+            >
                 <View style={styles.modalOverlay}>
                     <View style={styles.modalContent}>
                         <Text style={styles.modalTitle}>Select Act</Text>
@@ -519,10 +570,20 @@ const createStyles = (colors: any, spacing: any, layout: any) => StyleSheet.crea
     header: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', paddingHorizontal: spacing.m, paddingVertical: spacing.s, borderBottomWidth: 1, borderBottomColor: colors.border, backgroundColor: colors.surface },
     title: { color: colors.textPrimary, fontSize: 18, fontWeight: 'bold' },
     headerButton: { paddingHorizontal: spacing.l, paddingVertical: 8, borderRadius: 20, justifyContent: 'center', alignItems: 'center' },
-    cancelButton: { backgroundColor: 'transparent' },
+    cancelButton: {
+        backgroundColor: colors.critical + '14',
+        borderWidth: 1,
+        borderColor: colors.critical + '40',
+        flexDirection: 'row',
+        alignItems: 'center',
+        gap: 4,
+        paddingHorizontal: 12,
+        paddingVertical: 6,
+        borderRadius: 18,
+    },
     saveButton: { backgroundColor: colors.accent, shadowColor: colors.accent, shadowOffset: { width: 0, height: 2 }, shadowOpacity: 0.3, shadowRadius: 4, elevation: 4 },
-    headerButtonText: { fontSize: 14, fontWeight: '600' },
-    cancelButtonText: { color: colors.textSecondary },
+    headerButtonText: { fontSize: 13, fontWeight: '600' },
+    cancelButtonText: { color: colors.critical, fontWeight: '700' },
     saveButtonText: { color: colors.background === '#0A192F' ? '#FFFFFF' : '#FFFFFF' }, // Always white text on accent
     form: { padding: spacing.m, paddingBottom: 140 },
     sectionTitle: { color: colors.accent, fontSize: 12, fontWeight: '700', letterSpacing: 1, marginTop: spacing.l, marginBottom: spacing.m },

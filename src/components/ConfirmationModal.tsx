@@ -125,6 +125,7 @@ export const ConfirmationModal: React.FC<ConfirmationModalProps> = ({
         <Modal
             visible={visible}
             transparent
+            statusBarTranslucent
             animationType="fade"
             onRequestClose={onCancel}
         >

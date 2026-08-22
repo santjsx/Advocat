@@ -24,12 +24,14 @@ import * as Clipboard from 'expo-clipboard';
 import dayjs from 'dayjs';
 import 'react-native-get-random-values';
 import { v4 as uuidv4 } from 'uuid';
+import { useToast } from '../context/ToastContext';
 import { GradientButton } from '../components/GradientButton';
 
 type Props = NativeStackScreenProps<RootStackParamList, 'DocumentDetail'>;
 
 export const DocumentDetailScreen: React.FC<Props> = ({ navigation, route }) => {
     const { colors, spacing, layout } = useTheme();
+    const { showToast } = useToast();
     const documents = useAppStore(state => state.documents);
     const cases = useAppStore(state => state.cases);
     const deleteDocument = useAppStore(state => state.deleteDocument);
@@ -88,7 +90,10 @@ export const DocumentDetailScreen: React.FC<Props> = ({ navigation, route }) => 
                             text: 'Copy File Path',
                             onPress: () => {
                                 Clipboard.setStringAsync(currentVersion.uri);
-                                Alert.alert('Copied', 'File path copied to clipboard.');
+                                showToast({
+                                    message: 'File path copied to clipboard!',
+                                    type: 'info'
+                                });
                             },
                         },
                         { text: 'OK', style: 'cancel' },
@@ -103,7 +108,10 @@ export const DocumentDetailScreen: React.FC<Props> = ({ navigation, route }) => 
             try {
                 await shareDocument(currentVersion.uri, doc.name, doc.mimeType);
             } catch (e) {
-                Alert.alert('Error', 'Failed to share document.');
+                showToast({
+                    message: 'Failed to share document.',
+                    type: 'error'
+                });
             }
         }
     };
@@ -117,6 +125,10 @@ export const DocumentDetailScreen: React.FC<Props> = ({ navigation, route }) => 
         if (newName.trim()) {
             renameDocument(doc.id, newName.trim());
             setRenameModalVisible(false);
+            showToast({
+                message: 'Document renamed successfully!',
+                type: 'success'
+            });
         }
     };
 
@@ -132,6 +144,10 @@ export const DocumentDetailScreen: React.FC<Props> = ({ navigation, route }) => 
                     onPress: async () => {
                         await deleteAllVersions(doc.versions);
                         deleteDocument(doc.id);
+                        showToast({
+                            message: 'Document deleted.',
+                            type: 'info'
+                        });
                         navigation.goBack();
                     }
                 }
@@ -161,9 +177,15 @@ export const DocumentDetailScreen: React.FC<Props> = ({ navigation, route }) => 
             };
 
             addDocumentVersion(doc.id, version);
-            Alert.alert('Success', `Version ${newVersionNum} added!`);
+            showToast({
+                message: `Version ${newVersionNum} added successfully!`,
+                type: 'success'
+            });
         } catch (e) {
-            Alert.alert('Error', 'Failed to add version.');
+            showToast({
+                message: 'Failed to add version.',
+                type: 'error'
+            });
         } finally {
             setLoading(false);
         }
@@ -192,7 +214,7 @@ export const DocumentDetailScreen: React.FC<Props> = ({ navigation, route }) => 
     };
 
     return (
-        <SafeAreaView style={styles.container} edges={['top']}>
+        <SafeAreaView style={styles.container} edges={['top', 'bottom']}>
             <ScrollView contentContainerStyle={styles.content}>
                 {/* Header */}
                 <View style={styles.header}>
@@ -325,6 +347,7 @@ export const DocumentDetailScreen: React.FC<Props> = ({ navigation, route }) => 
             <Modal
                 visible={renameModalVisible}
                 transparent
+                statusBarTranslucent
                 animationType="fade"
                 onRequestClose={() => setRenameModalVisible(false)}
             >
@@ -356,7 +379,7 @@ export const DocumentDetailScreen: React.FC<Props> = ({ navigation, route }) => 
 
 const createStyles = (colors: any, spacing: any, layout: any) => StyleSheet.create({
     container: { flex: 1, backgroundColor: colors.background },
-    content: { padding: spacing.m, paddingBottom: 100 },
+    content: { padding: spacing.m, paddingBottom: 140 },
     header: { marginBottom: spacing.m },
     backBtn: { color: colors.accent, fontSize: 16 },
     errorText: { color: colors.textTertiary, textAlign: 'center', marginTop: spacing.xxl },

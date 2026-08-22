@@ -228,6 +228,36 @@ export const shareDocument = async (uri: string, fileName?: string, mimeType?: s
     }
 };
 
+/**
+ * Direct launch into Microsoft Word / Default DOCX Editor with zero friction
+ */
+export const openInMsWord = async (fileUri: string, fileName?: string): Promise<boolean> => {
+    try {
+        const mimeType = 'application/vnd.openxmlformats-officedocument.wordprocessingml.document';
+        
+        if (Platform.OS === 'android') {
+            try {
+                const contentUri = await FileSystem.getContentUriAsync(fileUri);
+                await IntentLauncher.startActivityAsync('android.intent.action.VIEW', {
+                    data: contentUri,
+                    type: mimeType,
+                    flags: 1, // FLAG_GRANT_READ_URI_PERMISSION
+                });
+                return true;
+            } catch (intentErr) {
+                console.warn('Intent launcher direct open failed, falling back to system share:', intentErr);
+            }
+        }
+
+        // Universal fallback: Sharing / Open in menu
+        await shareDocument(fileUri, fileName || 'Court_Document.docx', mimeType);
+        return true;
+    } catch (err) {
+        console.error('Failed to open document in Word:', err);
+        return false;
+    }
+};
+
 // Get file extension from mime type
 export const getExtensionFromMime = (mimeType: string): string => {
     const map: Record<string, string> = {

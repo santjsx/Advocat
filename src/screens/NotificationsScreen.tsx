@@ -4,12 +4,15 @@ import {
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { useAppStore } from '../store/useAppStore';
-import { colors, spacing, layout } from '../theme/colors';
+import { useTheme } from '../theme/ThemeContext';
 import { NativeStackScreenProps } from '@react-navigation/native-stack';
 import { RootStackParamList } from '../navigation/types';
 import dayjs from 'dayjs';
 import relativeTime from 'dayjs/plugin/relativeTime';
 import { NotificationHistoryItem } from '../models/Notification';
+
+import { SmoothPressable } from '../components/SmoothPressable';
+import { AnimatedListItem } from '../components/AnimatedListItem';
 
 dayjs.extend(relativeTime);
 
@@ -24,44 +27,49 @@ const TYPE_LABELS: Record<string, string> = {
 };
 
 export const NotificationsScreen: React.FC<Props> = ({ navigation }) => {
+    const { colors, spacing, layout } = useTheme();
     const notificationHistory = useAppStore(state => state.notificationHistory);
     const markNotificationRead = useAppStore(state => state.markNotificationRead);
     const markAllNotificationsRead = useAppStore(state => state.markAllNotificationsRead);
     const clearNotificationHistory = useAppStore(state => state.clearNotificationHistory);
 
     const unreadCount = notificationHistory.filter(n => !n.read).length;
+    const styles = createStyles(colors, spacing, layout);
 
-    const renderItem = ({ item }: { item: NotificationHistoryItem }) => (
-        <TouchableOpacity
-            style={[styles.notificationItem, !item.read && styles.unreadItem]}
-            onPress={() => {
-                markNotificationRead(item.id);
-                navigation.navigate('EditDeadline', { deadlineId: item.deadlineId });
-            }}
-            activeOpacity={0.7}
-        >
-            <View style={styles.notificationContent}>
-                <Text style={styles.notificationType}>{TYPE_LABELS[item.type] || item.type}</Text>
-                <Text style={styles.notificationTitle}>{item.deadlineTitle}</Text>
-                <Text style={styles.notificationCase}>{item.caseName}</Text>
-                <Text style={styles.notificationTime}>{dayjs(item.scheduledAt).fromNow()}</Text>
-            </View>
-            {!item.read && <View style={styles.unreadDot} />}
-        </TouchableOpacity>
-    );
+    const renderItem = React.useCallback(({ item, index }: { item: NotificationHistoryItem; index: number }) => (
+        <AnimatedListItem index={index}>
+            <SmoothPressable
+                style={[styles.notificationItem, !item.read && styles.unreadItem]}
+                onPress={() => {
+                    markNotificationRead(item.id);
+                    navigation.navigate('EditDeadline', { deadlineId: item.deadlineId });
+                }}
+                haptic="light"
+                scaleTo={0.98}
+            >
+                <View style={styles.notificationContent}>
+                    <Text style={styles.notificationType}>{TYPE_LABELS[item.type] || item.type}</Text>
+                    <Text style={styles.notificationTitle}>{item.deadlineTitle}</Text>
+                    <Text style={styles.notificationCase}>{item.caseName}</Text>
+                    <Text style={styles.notificationTime}>{dayjs(item.scheduledAt).fromNow()}</Text>
+                </View>
+                {!item.read && <View style={styles.unreadDot} />}
+            </SmoothPressable>
+        </AnimatedListItem>
+    ), [styles, markNotificationRead, navigation]);
 
     return (
-        <SafeAreaView style={styles.container} edges={['top']}>
+        <SafeAreaView style={styles.container} edges={['top', 'bottom']}>
             <View style={styles.header}>
-                <TouchableOpacity onPress={() => navigation.goBack()} style={styles.backButton}>
+                <SmoothPressable onPress={() => navigation.goBack()} style={styles.backButton} hitSlop={8} haptic="light">
                     <Text style={styles.backText}>← Back</Text>
-                </TouchableOpacity>
+                </SmoothPressable>
                 <Text style={styles.title}>Notifications</Text>
                 <View style={styles.headerActions}>
                     {unreadCount > 0 && (
-                        <TouchableOpacity onPress={markAllNotificationsRead} style={styles.actionButton}>
+                        <SmoothPressable onPress={markAllNotificationsRead} style={styles.actionButton} haptic="medium">
                             <Text style={styles.actionText}>Mark All Read</Text>
-                        </TouchableOpacity>
+                        </SmoothPressable>
                     )}
                 </View>
             </View>
@@ -77,6 +85,10 @@ export const NotificationsScreen: React.FC<Props> = ({ navigation }) => {
                 keyExtractor={item => item.id}
                 renderItem={renderItem}
                 contentContainerStyle={styles.list}
+                removeClippedSubviews={true}
+                maxToRenderPerBatch={10}
+                windowSize={5}
+                initialNumToRender={10}
                 ListEmptyComponent={
                     <View style={styles.emptyContainer}>
                         <Text style={styles.emptyIcon}>🔔</Text>
@@ -89,18 +101,20 @@ export const NotificationsScreen: React.FC<Props> = ({ navigation }) => {
             />
 
             {notificationHistory.length > 0 && (
-                <TouchableOpacity
+                <SmoothPressable
                     style={styles.clearButton}
                     onPress={clearNotificationHistory}
+                    haptic="warning"
+                    scaleTo={0.96}
                 >
                     <Text style={styles.clearText}>Clear All History</Text>
-                </TouchableOpacity>
+                </SmoothPressable>
             )}
         </SafeAreaView>
     );
 };
 
-const styles = StyleSheet.create({
+const createStyles = (colors: any, spacing: any, layout: any) => StyleSheet.create({
     container: {
         flex: 1,
         backgroundColor: colors.background,
@@ -152,7 +166,7 @@ const styles = StyleSheet.create({
     },
     list: {
         padding: spacing.m,
-        paddingBottom: 100,
+        paddingBottom: 140,
     },
     notificationItem: {
         backgroundColor: colors.surface,

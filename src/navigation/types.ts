@@ -10,6 +10,7 @@ export type RootStackParamList = {
     Notifications: undefined;
     AddDocument: { caseId?: string };
     DocumentDetail: { documentId: string };
+    ImageToPdf: { caseId?: string } | undefined;
     PrivacyPolicy: undefined;
     Help: undefined;
 };

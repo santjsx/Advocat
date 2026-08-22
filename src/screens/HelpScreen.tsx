@@ -17,7 +17,7 @@ import { NativeStackScreenProps } from '@react-navigation/native-stack';
 import { RootStackParamList } from '../navigation/types';
 import * as Haptics from 'expo-haptics';
 
-if (Platform.OS === 'android' && UIManager.setLayoutAnimationEnabledExperimental) {
+if (Platform.OS === 'android' && UIManager.setLayoutAnimationEnabledExperimental && !(global as any).nativeFabricUIManager) {
     UIManager.setLayoutAnimationEnabledExperimental(true);
 }
 
@@ -161,7 +161,7 @@ export const HelpScreen: React.FC<Props> = ({ navigation }) => {
         },
         content: {
             padding: spacing.m,
-            paddingBottom: 60,
+            paddingBottom: 140,
         },
         sectionCard: {
             marginBottom: spacing.m,
@@ -800,6 +800,213 @@ export const HelpScreen: React.FC<Props> = ({ navigation }) => {
                 ),
             },
             {
+                id: 'image-to-pdf',
+                title: 'Image to Court-Ready PDF Converter & Scanner',
+                icon: 'images-outline',
+                badge: 'PDF Scanner',
+                badgeColor: colors.accent,
+                keywords: [
+                    'image',
+                    'pdf',
+                    'converter',
+                    'scan',
+                    'scanner',
+                    'gallery',
+                    'camera',
+                    'annexure',
+                    'sort',
+                    'reorder',
+                    'margins',
+                    'compression',
+                    'save',
+                    'export',
+                    'court',
+                    'case',
+                ],
+                content: (
+                    <>
+                        <Text style={styles.paragraph}>
+                            The native <Text style={styles.boldText}>Image to PDF Converter</Text> allows advocates to rapidly compile FIR copies, typed petitions, witness statements, and trial court exhibits into court-compliant PDF documents in seconds—100% offline.
+                        </Text>
+
+                        <Callout type="tip" title="✨ Key Capabilities">
+                            • <Text style={styles.boldText}>Multi-Image Selection:</Text> Select single or multiple photos directly from your device gallery or camera.
+                            {'\n'}• <Text style={styles.boldText}>Visual Reordering & Sorting:</Text> Move images up or down to arrange perfect annexure sequence (Annexure A-1, A-2...).
+                            {'\n'}• <Text style={styles.boldText}>Tap-to-Preview Modal:</Text> Tap any thumbnail to inspect high-resolution full-screen image before compiling.
+                            {'\n'}• <Text style={styles.boldText}>Court Margin Toggle:</Text> Choose Standard Court Margins (for docket binding) or Full-Bleed 0-Margin.
+                            {'\n'}• <Text style={styles.boldText}>Image Quality Optimization:</Text> Choose Original (Lossless), Balanced (Standard), or High Compression (for e-filing file size limits).
+                        </Callout>
+
+                        <Text style={styles.subHeader}>How to Convert Images to PDF Step-by-Step</Text>
+                        <StepRow
+                            num={1}
+                            title="Launch from Homescreen or Case File"
+                            desc="Tap the 'Image to PDF' shortcut button on the Dashboard or tap '+' in the Documents tab of any matter."
+                        />
+                        <StepRow
+                            num={2}
+                            title="Pick Photos from Gallery or Camera"
+                            desc="Tap '+ Pick Images from Gallery' or '+ Capture with Camera' to select evidence photographs and scanned pages."
+                        />
+                        <StepRow
+                            num={3}
+                            title="Arrange & Inspect Sequence"
+                            desc="Use 'Move Up' / 'Move Down' arrows to arrange pages chronologically. Tap any picture to open the high-resolution zoomable preview modal."
+                        />
+                        <StepRow
+                            num={4}
+                            title="Configure PDF Document Settings"
+                            desc="Enter your document title (e.g. 'FIR_Annexure_Bundle_Case_1829.pdf'), select Page Margins, and pick compression quality."
+                        />
+                        <StepRow
+                            num={5}
+                            title="Generate & Save"
+                            desc="Tap 'Generate Court-Ready PDF'. Once compiled, tap 'Save to Gallery / Downloads' or 'Attach to Case File' to link it directly to your client folder."
+                        />
+
+                        <Callout type="success" title="🔒 100% Offline & Zero Server Processing">
+                            All PDF compilation is performed using native on-device rendering. Your confidential evidence images never leave your smartphone.
+                        </Callout>
+                    </>
+                ),
+            },
+            {
+                id: 'ai-research',
+                title: 'AI Legal Research & Case Precedent Studio',
+                icon: 'library-outline',
+                badge: 'Legal AI',
+                badgeColor: colors.safe,
+                keywords: [
+                    'research',
+                    'precedents',
+                    'judgments',
+                    'supreme court',
+                    'high court',
+                    'bns',
+                    'bnss',
+                    'bsa',
+                    'ipc',
+                    'crpc',
+                    'citations',
+                    'notes',
+                    'legal search',
+                ],
+                content: (
+                    <>
+                        <Text style={styles.paragraph}>
+                            The AI Legal Research Studio provides instantaneous judicial reasoning, landmark citations, and statutory cross-mappings between old colonial codes (IPC, CrPC, IEA) and modern criminal statutes (<Text style={styles.boldText}>BNS 2023, BNSS 2023, BSA 2023</Text>).
+                        </Text>
+
+                        <Text style={styles.subHeader}>What You Can Ask the AI Research Engine</Text>
+                        <Bullet>
+                            <Text style={styles.boldText}>Statutory Mapping:</Text> E.g. "What is the equivalent of Section 302 IPC / 438 CrPC under BNS/BNSS?"
+                        </Bullet>
+                        <Bullet>
+                            <Text style={styles.boldText}>Landmark High Court Ratios:</Text> E.g. "Latest Madras High Court precedents on Anticipatory Bail parity in financial fraud matters."
+                        </Bullet>
+                        <Bullet>
+                            <Text style={styles.boldText}>Drafting Arguments:</Text> E.g. "Draft 5 maintainability grounds to quash Section 138 NI Act complaint against non-signatory director."
+                        </Bullet>
+
+                        <Text style={styles.subHeader}>Saving Research Directly to Case Files</Text>
+                        <Bullet>
+                            Every generated research summary features a <Text style={styles.boldText}>"Pin to Case File"</Text> action. Select any active case from the dropdown to permanently store citations and arguments inside that matter's Research Binders.
+                        </Bullet>
+                    </>
+                ),
+            },
+            {
+                id: 'deepseek-telemetry',
+                title: 'DeepSeek AI Telemetry & Indian Rupee (INR ₹) Meter',
+                icon: 'hardware-chip-outline',
+                badge: 'AI Telemetry',
+                badgeColor: '#D4AF37',
+                keywords: [
+                    'deepseek',
+                    'api key',
+                    'inr',
+                    'rupees',
+                    'currency',
+                    'balance',
+                    'cost',
+                    'tokens',
+                    'prompt',
+                    'completion',
+                    'sync',
+                    'telemetry',
+                ],
+                content: (
+                    <>
+                        <Text style={styles.paragraph}>
+                            Advocat features a transparent, real-time <Text style={styles.boldText}>AI Telemetry & Credit Meter</Text> configured natively in Indian Rupees (<Text style={styles.boldText}>INR - ₹</Text>).
+                        </Text>
+
+                        <Callout type="tip" title="📊 Live Telemetry Capabilities">
+                            • <Text style={styles.boldText}>Live Account Balance:</Text> When you tap 'Sync', Advocat connects directly via encrypted HTTPS to DeepSeek's official balance server and fetches your exact remaining credit.
+                            {'\n'}• <Text style={styles.boldText}>Indian Rupee Conversion:</Text> Automatically converts USD ($) balance to Indian Rupees (₹) at standard benchmark rates (e.g. $1.95 USD = ₹170.63 INR).
+                            {'\n'}• <Text style={styles.boldText}>Exact Token Ledger:</Text> Tracks exact prompt (input) and completion (output) tokens with every legal pleading or research query.
+                            {'\n'}• <Text style={styles.boldText}>Compute Spend:</Text> Computes your lifetime practice AI spend down to single paise.
+                        </Callout>
+
+                        <Text style={styles.subHeader}>How to Configure Your DeepSeek API Key</Text>
+                        <StepRow
+                            num={1}
+                            title="Get Your DeepSeek API Key"
+                            desc="Visit platform.deepseek.com on your computer/phone and generate an API key (starts with 'sk-...')."
+                        />
+                        <StepRow
+                            num={2}
+                            title="Save Key in Settings"
+                            desc="Navigate to Settings → DeepSeek AI Configuration, paste your API key, and tap 'Save API Key'."
+                        />
+                        <StepRow
+                            num={3}
+                            title="Test Connection & Sync"
+                            desc="Tap 'Test Connection' to verify end-to-end latency. Your live balance in INR (₹) will immediately populate in Settings and Analytics."
+                        />
+                    </>
+                ),
+            },
+            {
+                id: 'practice-analytics',
+                title: 'Chamber Practice Intelligence & Analytics',
+                icon: 'stats-chart-outline',
+                badge: 'Analytics',
+                badgeColor: colors.accent,
+                keywords: [
+                    'analytics',
+                    'chamber score',
+                    'rating',
+                    'disposal',
+                    'duration',
+                    'punctuality',
+                    'intake',
+                    'velocity',
+                    'cause list',
+                ],
+                content: (
+                    <>
+                        <Text style={styles.paragraph}>
+                            The Practice Intelligence tab provides macro analytics to monitor chamber efficiency, litigation velocity, and disposal ratios.
+                        </Text>
+
+                        <Text style={styles.subHeader}>Key Practice Metrics</Text>
+                        <Bullet>
+                            <Text style={styles.boldText}>Chamber Rating (0–100):</Text> Composite health index calculated from on-time hearing punctuality, active matter disposal, and deadline compliance.
+                        </Bullet>
+                        <Bullet>
+                            <Text style={styles.boldText}>Disposal Efficiency:</Text> Percentage of instituted matters successfully concluded, settled, or won.
+                        </Bullet>
+                        <Bullet>
+                            <Text style={styles.boldText}>Average Case Lifecycle:</Text> Mean duration (in days) from initial case intake to final disposal.
+                        </Bullet>
+                        <Bullet>
+                            <Text style={styles.boldText}>Intake Velocity Curve:</Text> Line chart tracking month-over-month new matters instituted in your chamber over the last 6 months.
+                        </Bullet>
+                    </>
+                ),
+            },
+            {
                 id: 'documents',
                 title: 'Document Vault & Evidence Management',
                 icon: 'document-text-outline',
@@ -909,7 +1116,7 @@ export const HelpScreen: React.FC<Props> = ({ navigation }) => {
     }, [sections, searchQuery]);
 
     return (
-        <SafeAreaView style={styles.container}>
+        <SafeAreaView style={styles.container} edges={['top', 'bottom']}>
             {/* Header */}
             <View style={styles.header}>
                 <TouchableOpacity

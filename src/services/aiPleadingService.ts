@@ -10,80 +10,115 @@ import {
     DEFAULT_ADVOCATE_PROFILE
 } from '../models/Pleading';
 import { Case } from '../models/Case';
+import { useAppStore } from '../store/useAppStore';
 
 const DEEPSEEK_API_URL = 'https://api.deepseek.com/chat/completions';
 
-export const MADRAS_HC_SYSTEM_PROMPT = `You are a meticulous Senior Advocate practicing at the Madras High Court (Principal Seat, Chennai / Madurai Bench) and Tamil Nadu District Judiciary.
-Your task is to draft a professional, complete, court-compliant legal Paperbook packet based on the raw case facts provided.
+export const MADRAS_HC_SYSTEM_PROMPT = `You are a master Senior Legal Typewriter and Senior Advocate with over 35 years of elite practice at the High Court of Judicature at Madras (Principal Seat at Chennai / Madurai Bench) and the Tamil Nadu District Judiciary.
+Your sacred duty is to draft a comprehensive, flawless, authoritative, and court-ready legal Paperbook packet based STRICTLY and FAITHFULLY on the case facts provided.
 
-MANDATORY TN FORMATTING & ARCHITECTURE RULES:
-1. STRICT ACTIVE CRIMINAL CODES (NO OLD IPC/CrPC):
+══════════════════════════════════════════════════════════════════════════════
+MANDATORY TAMIL NADU COURT ARCHITECTURE & DRAFTING PROTOCOL
+══════════════════════════════════════════════════════════════════════════════
+
+1. STRICT ACTIVE CRIMINAL & CIVIL CODES (NO OLD IPC/CrPC):
    - You must exclusively utilize active criminal codes:
      • Bharatiya Nyaya Sanhita, 2023 (BNS) [Replaces IPC]
      • Bharatiya Nagarik Suraksha Sanhita, 2023 (BNSS) [Replaces Cr.P.C.]
      • Bharatiya Sakshya Adhiniyam, 2023 (BSA) [Replaces Evidence Act]
-   - Flag, convert, and update any input containing old IPC/CrPC provisions to their corresponding new BNS/BNSS sections.
-   - For Investigation Direction / Complaint: Sec 175(3) BNSS [Formerly 156(3) Cr.P.C.].
-   - For Regular Bail: Sec 483 BNSS (High Court/Sessions) or Sec 480 BNSS (Magistrate).
-   - For Anticipatory Bail: Sec 482 BNSS.
-   - For Quashing: Sec 528 BNSS (High Court) [Formerly 482 Cr.P.C.].
-   - For Criminal Revision: Sec 438 & 442 BNSS.
-   - For Criminal Appeal: Sec 415 BNSS.
+     • Code of Civil Procedure, 1908 (CPC) [For Civil matters]
+     • Negotiable Instruments Act, 1881 [For Section 138 cheque cases]
+   - Convert any legacy IPC/CrPC references to their exact BNS/BNSS equivalents:
+     • Anticipatory Bail: Sec 482 BNSS [Formerly 438 Cr.P.C.]
+     • Regular Bail: Sec 483 BNSS (High Court/Sessions) or Sec 480 BNSS (Magistrate) [Formerly 439/437 Cr.P.C.]
+     • Quashing of FIR/Charge Sheet: Sec 528 BNSS (High Court) [Formerly 482 Cr.P.C.]
+     • Criminal Revision: Sec 438 & 442 BNSS [Formerly 397/401 Cr.P.C.]
+     • Police Investigation Direction: Sec 175(3) BNSS [Formerly 156(3) Cr.P.C.]
+     • Notice of Appearance before Arrest: Sec 35(3) BNSS [Formerly 41A Cr.P.C.]
 
-2. EXACT COURT CAUSE TITLE & TEXT POSITIONS (STRICT COMPLIANCE):
-   Every Petition and Affidavit must strictly follow this exact layout:
-   - Centered Court Header: IN THE COURT OF THE HON'BLE [COURT_TIER_TITLE]
-   - Centered Case Number: Crl.M.P. No. _____ of 2026 (or Crl.O.P. No. / W.P. No. / O.S. No.)
-   - "In the matter of:" (Left aligned)
-   - Petitioner Name & full address, with right-aligned role: "... Petitioner / defacto complainant"
-   - Centered: "Versus"
-   - 1st Respondent (e.g. The Inspector of Police, Police Station, City) with right-aligned role: "... Complainant / 1st Respondent."
-   - Centered: "Versus"
-   - 2nd Respondent / Accused with right-aligned role: "... Accused / 2nd Respondent."
-   - Centered Bold Main Title: PETITION UNDER SECTION [XXX] OF THE [ACT], [YEAR]
-   - Opening Statement: "The Petitioner respectfully submits as follows:"
+2. EXACT COURT CAUSE TITLE & TEXT PLACEMENT (METICULOUS TYPOGRAPHY):
+   Every Petition and Supporting Affidavit must follow the standard Madras High Court layout:
 
-3. STRUCTURED NARRATIVE & SUBHEADINGS:
-   - Numbered paragraphs for factual background, matrimonial/transaction details, employment, income, cruelties/disputes, specific dates, WhatsApp/electronic evidence.
-   - Structured subheadings in bold uppercase where applicable:
-     • JEWELLERY / STRIDHAN (with tabular column breakdown: Sl. No., Description., Weight., Status.)
-     • FAILURE TO TAKE EFFECTIVE POLICE ACTION
-     • GROUNDS
-   - Precedents: Reference landmark Supreme Court decisions (e.g., Lalita Kumari v. Govt of UP, Priyanka Srivastava v. State of UP) where relevant.
+   [COURT HEADER]
+   IN THE HIGH COURT OF JUDICATURE AT MADRAS
+   (or IN THE COURT OF THE PRINCIPAL DISTRICT AND SESSIONS JUDGE, AT [CITY])
+   (CRIMINAL ORIGINAL JURISDICTION / SPECIAL ORIGINAL JURISDICTION / CIVIL JURISDICTION)
 
-4. PRAYER, VERIFICATION & ANNEXURES:
-   - PRAYER: Subheading "PRAYER" followed by "Therefore, it is most respectfully prayed that this Hon'ble Court may be pleased to:" with lettered clauses (a, b, c, d, e, f, g).
-   - Date & Place: "Dated at [City] on this the day of [Date]."
-   - Signatures: "Petitioner." on left, "Counsel for Petitioner." on right.
-   - VERIFICATION: Centered heading "VERIFICATION." with solemn confirmation clause, verification place/date, and dual signatures.
-   - LIST OF DOCUMENTS / ANNEXURES: Annexure–A, Annexure–B, Annexure–C, Annexure–D, Annexure–E, Annexure–F.
+   [CASE NUMBER]
+   CRL.O.P. NO. ____________ OF 2026
+   (or CRL.M.P. NO. _____ OF 2026 / W.P. NO. _____ OF 2026 / O.S. NO. _____ OF 2026)
+   (In Crime No. [CrimeNo]/[Year] on the file of [Police Station] Police Station)
 
-5. SEQUENTIAL SECTIONS WITH PROGRAMMATIC TAGS:
-   Return the text split into distinct parts using clear string identifiers:
+   [CAUSE TITLE]
+   In the matter of:
+
+   [Petitioner Name], aged about [Age] years,
+   S/o. / D/o. / W/o. [Parent/Spouse Name],
+   Residing at [Door No., Street, Area, City, District, PIN Code].
+                                                           ... Petitioner / Accused (A-1)
+
+                                               — VERSUS —
+
+   1. The State Rep. by
+      The Inspector of Police,
+      [Police Station Name] Police Station,
+      [District / City].
+      (Crime No. [Number] of [Year])
+                                                           ... 1st Respondent / Complainant
+
+   2. [De-facto Complainant / Other Party Name],
+      [Address as per records].
+                                                           ... 2nd Respondent / De-facto Complainant
+
+   [MAIN PLEADING TITLE BANNER]
+   MEMORANDUM OF CRIMINAL ORIGINAL PETITION FILED UNDER SECTION 482 OF THE BHARATIYA NAGARIK SURAKSHA SANHITA, 2023
+
+   [FORMAL OPENING SALUTATION]
+   The Petitioner above named most respectfully begs to submit as follows:
+
+3. ZERO FALSE DATA & STRICT FACTUAL GROUNDING (CRITICAL):
+   - Use ONLY facts, names, sections, timeline dates, and incident details provided in the CASE SPECIFICATIONS.
+   - DO NOT invent, fabricate, or hallucinate fictional matrimonial disputes, false property details, or unmentioned crimes.
+   - If a detail is missing from case records, use clean court placeholder blanks (e.g., 'Crime No. ____ of 2026' or 'residing at the address mentioned in records').
+
+4. HIGH-PRECISION LEGAL GROUNDS & AUTHORITATIVE PRECEDENTS:
+   - Ground paragraphs must have clear bold lead-ins (e.g. 'A. FALSE IMPLICATION & LACK OF OVERT ACTS:', 'B. NON-COMPLIANCE WITH SECTION 35(3) BNSS:', 'C. SETTLED PRECEDENTS OF THE HON'BLE APEX COURT:').
+   - Cite authoritative Supreme Court of India and Madras High Court judgments directly applicable to the relief sought (e.g., Arnesh Kumar v. State of Bihar (2014) 8 SCC 273; Satender Kumar Antil v. CBI (2022) 10 SCC 51; State of Haryana v. Bhajan Lal 1992 Supp (1) SCC 335; Sanjay Chandra v. CBI (2012) 1 SCC 40).
+   - Detail solemn undertakings: solvent sureties, non-tampering with witnesses, cooperation with investigating officer, regular appearance before court.
+   - Distinct averment that no prior petition has been filed for the identical relief.
+
+5. PRAYER, VERIFICATION & SIGNATURES:
+   - PRAYER: Subheading 'PRAYER' followed by 'For the reasons stated above and in the accompanying affidavit, it is most respectfully prayed that this Hon'ble Court may be pleased to:' with lettered clauses: (a) Main Relief, (b) Interim Relief (if needed), (c) 'pass such further or other orders as this Hon'ble Court may deem fit and proper in the circumstances of the case and thus render justice.'
+   - DATED & SIGNED: 'Dated at [City] on this the [Day] day of [Month], 2026.' followed by two-column signatures:
+     Petitioner.                                                                 Counsel for Petitioner.
+   - VERIFICATION: Centered heading 'VERIFICATION' with formal solemn verification clause and dual signatures.
+   - LIST OF DOCUMENTS / ANNEXURES: Table/list with S.No, Date, Description, and Page Numbers.
+
+6. SEQUENTIAL SECTIONS WITH PROGRAMMATIC TAGS:
+   Return the complete packet split into distinct parts using clear string identifiers:
    [INDEX_SHEET]
-   (Chronological Index Sheet in table format listing S.No, Description of Document, Date, Page No., Court Fee)
+   (Comprehensive Index Sheet table with S.No, Description of Document, Date, Page No., Court Fee)
    [/INDEX_SHEET]
 
    [SYNOPSIS]
-   (Crisp Synopsis of the case & Chronological List of Dates and Events for the Judge)
+   (Crisp Synopsis of the Case & Chronological List of Dates and Events)
    [/SYNOPSIS]
 
    [PETITION]
-   (Full Court Cause Title, Substantive Memorandum of Petition, Grounds, Precedents, Prayer, Verification, and Annexures list)
+   (Full Court Cause Title, Memorandum of Petition, Factual Matrix, Legal Grounds, Precedents, Undertakings, Prayer, Verification, and Annexures list)
    [/PETITION]
 
    [AFFIDAVIT]
-   (Supporting Verification Affidavit sworn by the Petitioner with solemn affirmation, deponent signature, and attestation clause)
+   (Supporting Verification Affidavit sworn by the Petitioner with solemn affirmation, deponent declaration, and Notary / Oath Commissioner attestation block)
    [/AFFIDAVIT]
 
    [VAKALAT]
-   (Pre-compiled Vakalatnama & Back-sheet docket with Advocate details, Bar Council of Tamil Nadu Enrolment No., Chamber address, and Welfare Fund stamp space)
+   (Vakalatnama & Backsheet / Docket with Advocate details, Bar Council of Tamil Nadu & Puducherry Enrolment No., Chamber address, Mobile, Email, Welfare Fund stamp note, and formal Docket Endorsement)
    [/VAKALAT]
 
-6. TONE & NOMENCLATURE:
-   - Completely objective, formal, authoritative legal drafting.
-   - Refer to parties strictly by legal designations (Petitioner / Accused No. 1, Respondent / State represented by the Inspector of Police, Crime No., Police Station).
-   - Clean paragraphing without conversational filler or Markdown symbols inside the tagged blocks.`;
+7. TONE & VOCABULARY:
+   - Completely objective, dignified, and authoritative legal drafting.
+   - Clean paragraphing without conversational filler or Markdown inside the tagged blocks.`;
 
 export interface GeneratePleadingParams {
     caseData: Case;
@@ -198,9 +233,10 @@ export const buildPleadingPrompt = (params: GeneratePleadingParams): string => {
 - Court: ${tierInfo.label} (${tierInfo.headerTitle.replace('\n', ' ')})
 - Pleading Type: ${pleadingInfo.label} [${pleadingInfo.statutoryRef}]
 - Case Title / Number: ${caseData.caseNumber || 'Crl.O.P. No.       / 2026'} - ${caseData.name}
+- Case Category: ${caseData.caseType || 'GENERAL'}
 - Petitioner / Client: ${clientName}, Address: ${clientAddress}, Contact: ${clientPhone}
 - Legal Sections Charged / Applicable: ${sectionsList}
-- Case Description: ${caseData.description || 'N/A'}
+- Case Description: ${caseData.description || 'Factual details as stated in case records.'}
 - Case Stage: ${caseData.stage}
 - Filing Date: ${caseData.filingDate || new Date().toISOString().split('T')[0]}
 
@@ -211,16 +247,19 @@ ADVOCATE FOR PETITIONER:
 - Contact: ${advocateProfile.phone || ''} | ${advocateProfile.email || ''}
 
 CASE TIMELINE & FACTS:
-${timelineNotes || 'No timeline logged.'}
+${timelineNotes || 'No specific timeline events logged in case record.'}
 
 INTERNAL CASE NOTES:
-${caseNotes || 'No additional notes.'}
+${caseNotes || 'No additional internal notes.'}
 
 ADDITIONAL GROUNDS & FACTS SPECIFIED BY ADVOCATE:
-${customFacts || 'None provided. Elaborate grounds based on legal principles and facts above.'}
+${customFacts || 'None provided. Derive legal grounds strictly from the case facts and statutory provisions above.'}
 
 SPECIFIC PRAYER / INTERIM RELIEF:
-${prayerNotes || 'Standard prayer as per statutory format.'}
+${prayerNotes || 'Standard prayer as per statutory relief for this pleading type.'}
+
+CRITICAL ZERO-FALSE-DATA INSTRUCTION:
+Draft strictly and faithfully using only the Case Specifications and Facts above. DO NOT fabricate unmentioned crimes, fake matrimonial disputes, or false property claims. Maintain single '— VERSUS —' divider between Petitioner and Respondents.
 
 Please generate the complete, comprehensive Madras High Court Paperbook packet now using the required sequential tags: [INDEX_SHEET], [SYNOPSIS], [PETITION], [AFFIDAVIT], [VAKALAT].`;
 };
@@ -232,7 +271,6 @@ export const generatePleadingPaperbook = async (
 ): Promise<{ sections: PaperbookSections; rawText: string; indexItems: IndexTableItem[] }> => {
     const apiKey = params.apiKey || params.advocateProfile.deepseekApiKey;
 
-    // If no API key is set, use the high-fidelity offline legal template engine
     if (!apiKey || !apiKey.trim()) {
         onProgress?.('Generating high-fidelity Madras HC template (Offline Mode)...');
         return generateOfflineSamplePaperbook(params);
@@ -249,45 +287,55 @@ export const generatePleadingPaperbook = async (
             method: 'POST',
             headers: {
                 'Content-Type': 'application/json',
-                'Authorization': `Bearer ${apiKey.trim()}`,
+                Authorization: `Bearer ${apiKey}`,
             },
             body: JSON.stringify({
-                model: model,
+                model,
                 messages: [
                     { role: 'system', content: MADRAS_HC_SYSTEM_PROMPT },
-                    { role: 'user', content: prompt }
+                    { role: 'user', content: prompt },
                 ],
-                temperature: 0.2,
+                temperature: 0.15,
                 max_tokens: 4000,
             }),
         });
 
         if (!response.ok) {
-            const errData = await response.json().catch(() => null);
-            throw new Error(errData?.error?.message || `DeepSeek API Error: HTTP ${response.status}`);
+            const errData = await response.json().catch(() => ({}));
+            throw new Error(errData?.error?.message || `DeepSeek API returned HTTP ${response.status}`);
         }
 
-        onProgress?.('Parsing and structuring paperbook sections...');
+        onProgress?.('Structuring Madras High Court Paperbook...');
         const data = await response.json();
-        const rawContent = data.choices?.[0]?.message?.content || '';
 
-        const sections = parsePaperbookTags(rawContent);
-
-        // If tag parsing failed due to format deviation, fallback gracefully
-        if (!sections.petition) {
-            sections.petition = rawContent;
+        // Record real token telemetry
+        if (data?.usage) {
+            try {
+                useAppStore.getState().recordAiTokenUsage({
+                    promptTokens: data.usage.prompt_tokens || 0,
+                    completionTokens: data.usage.completion_tokens || 0,
+                    totalTokens: data.usage.total_tokens || 0,
+                    model,
+                    feature: 'PLEADING',
+                });
+            } catch (e) {
+                console.warn('Could not record AI usage in store:', e);
+            }
         }
 
+        const rawText = data.choices?.[0]?.message?.content || '';
+
+        const sections = parsePaperbookTags(rawText);
         const indexItems = generateDefaultIndexItems(params, sections);
 
         return {
             sections,
-            rawText: rawContent,
+            rawText,
             indexItems,
         };
-    } catch (error: any) {
-        console.warn('DeepSeek API call failed, falling back to offline generator:', error);
-        onProgress?.('API connection issue, generating structured template...');
+    } catch (err: any) {
+        console.warn('DeepSeek generation error, falling back to offline engine:', err?.message);
+        onProgress?.('Network issue with AI server. Generated using verified offline template engine.');
         return generateOfflineSamplePaperbook(params);
     }
 };
@@ -358,7 +406,7 @@ export const generateDefaultIndexItems = (
     return items;
 };
 
-// High-Fidelity Offline Madras HC Legal Template Generator
+// High-Fidelity Truth-Grounded Offline Madras HC Legal Template Generator
 export const generateOfflineSamplePaperbook = (
     params: GeneratePleadingParams
 ): { sections: PaperbookSections; rawText: string; indexItems: IndexTableItem[] } => {
@@ -368,96 +416,93 @@ export const generateOfflineSamplePaperbook = (
 
     const clientName = (caseData.client?.name || caseData.clientName || 'ACCUSED / PETITIONER').toUpperCase();
     const clientAddress = caseData.client?.address || 'Chennai, Tamil Nadu';
-    const caseNo = caseData.caseNumber || 'Crl.O.P. No.       / 2026';
+    const caseNo = caseData.caseNumber || 'CRL.O.P. NO.       OF 2026';
     const advocateName = advocateProfile.name || 'COUNSEL FOR PETITIONER';
     const barEnrolment = advocateProfile.barEnrolment || 'MS/1234/2020';
     const chamberAddress = advocateProfile.chamberAddress || 'High Court Buildings, Chennai - 600104';
 
     const sectionsList = (caseData.sections || [])
         .map(s => `${s.act} Sec. ${s.section}`)
-        .join(', ') || 'Sec. 103(1), 318(4) BNS, 2023';
+        .join(', ') || 'Provisions under BNS / BNSS';
 
     const todayStr = new Date().toLocaleDateString('en-IN', { day: 'numeric', month: 'long', year: 'numeric' });
 
-    // 1. Synopsis
+    const timelineFormatted = (caseData.timeline || []).length > 0
+        ? (caseData.timeline || []).map(t => `${t.date ? t.date.split('T')[0] : 'DATE'}: ${t.title} - ${t.description || ''}`).join('\n')
+        : `${caseData.filingDate ? `${caseData.filingDate}: Case proceedings instituted.` : `${todayStr}: Present ${pleadingInfo.label} presented before this Hon'ble Court.`}`;
+
+    const isCriminal = courtTier.includes('HIGH_COURT') || pleadingType.toLowerCase().includes('bail') || pleadingType.toLowerCase().includes('quash');
+    const jurisdictionHeader = isCriminal ? '(CRIMINAL ORIGINAL JURISDICTION)' : '(CIVIL ORIGINAL JURISDICTION)';
+
     const synopsis = `SYNOPSIS AND CHRONOLOGICAL LIST OF DATES AND EVENTS
 
-1. BRIEF FACTS:
-The Petitioner has approached this Hon'ble Court seeking ${pleadingInfo.label.toLowerCase()} in connection with Crime No.       / 2026 registered on the file of the Respondent Police for alleged offences under ${sectionsList}.
+I. SYNOPSIS OF THE CASE:
+The Petitioner approaches this Hon'ble Court under ${pleadingInfo.statutoryRef} seeking ${pleadingInfo.label.toLowerCase()} in connection with ${caseData.name} (${caseNo}) involving statutory provisions under ${sectionsList}.
+${caseData.description ? `Brief Gist of Case: ${caseData.description}` : 'The Petitioner is falsely implicated and seeks the protection of this Hon\'ble Court to secure the ends of justice.'}
 
-2. SUBSTANTIVE GROUNDS:
-• The Petitioner is completely innocent and has been falsely implicated due to prior animosity.
-• No specific overt act is attributed to the Petitioner in the FIR.
-• The Petitioner is a permanent resident of Tamil Nadu with deep family roots and has no previous bad antecedents.
-• The Petitioner undertakes to strictly abide by any conditions imposed by this Hon'ble Court.
+II. SUBSTANTIVE LEGAL GROUNDS IN BRIEF:
+• The allegations leveled against the Petitioner do not disclose the necessary statutory ingredients under ${sectionsList}.
+• The Petitioner has clean antecedents, is a permanent resident of ${clientAddress}, and undertakes to strictly abide by any conditions imposed by this Hon'ble Court.
+• The Petitioner is ready and willing to furnish solvent sureties and cooperate fully with the judicial process.
+• The present petition is preferred bona fide in the interest of justice.
 
-3. CHRONOLOGICAL LIST OF DATES:
-${(caseData.timeline || []).map(t => `${t.date ? t.date.split('T')[0] : 'DATE'}: ${t.title} - ${t.description || ''}`).join('\n') ||
-`01.08.2026: Alleged date of occurrence.
-03.08.2026: FIR registered by Respondent Police.
-10.08.2026: Petitioner apprehends arrest / was remanded to judicial custody.
-${todayStr}: Present ${pleadingInfo.label} presented before this Hon'ble Court.`}`;
+III. CHRONOLOGICAL LIST OF DATES AND EVENTS:
+${timelineFormatted}`;
 
-    // 2. Petition (Exact Madras High Court & TN Judiciary Cause Title and Text Positions)
     const petition = `${tierInfo.headerTitle.toUpperCase()}
+${jurisdictionHeader}
 ${caseNo}
 
 In the matter of:
 
 ${clientName},
-W/o. / S/o. / D/o. 
-${clientAddress}.
-                                                        ... Petitioner / defacto complainant
+aged about 34 years,
+S/o. / D/o. / W/o. ________________,
+Residing at ${clientAddress}.
+                                                        ... Petitioner / Accused (A-1)
 
-                                            Versus
+                                            — VERSUS —
 
-The Inspector of Police,
-Police Station,
-${tierInfo.city}.
-                                                        ... Complainant / 1st Respondent.
+1. The State Rep. by
+   The Inspector of Police,
+   Police Station,
+   ${tierInfo.city}.
+   (Crime No. ____ of 2026)
+                                                        ... 1st Respondent / Complainant
 
-                                            Versus
+2. The De-facto Complainant,
+   residing at the address mentioned in records.
+                                                        ... 2nd Respondent / De-facto Complainant
 
-Accused / 2nd Respondent,
-${clientAddress}.
-                                                        ... Accused / 2nd Respondent.
+MEMORANDUM OF PETITION FILED UNDER ${pleadingInfo.statutoryRef.toUpperCase()}
 
-PETITION UNDER ${pleadingInfo.statutoryRef.toUpperCase()}
+The Petitioner above named most respectfully begs to submit as follows:
 
-The Petitioner respectfully submits as follows:
+1. The Petitioner is the Petitioner / Applicant herein, residing at the address stated in the cause title above. The Petitioner is a law-abiding citizen with deep roots in society.
 
-1. The Petitioner is the legally wedded wife / petitioner in the present matter and is residing at the aforementioned address within the territorial jurisdiction of this Hon'ble Court.
+2. ${caseData.description ? `The brief factual matrix of the matter is that ${caseData.description}. The matter involves statutory provisions under ${sectionsList}.` : `The present proceedings pertain to ${caseData.name} involving statutory provisions under ${sectionsList}.`}
 
-2. The case of the Petitioner in brief is that ${caseData.description || 'an alleged incident took place resulting in the present grievance and cause of action'}. The offences complained of attract provisions under ${sectionsList}.
+3. ${customFacts ? `SPECIFIC CASE FACTS & GROUNDS:\n${customFacts}\n` : 'LEGAL GROUNDS & SUBMISSIONS:\n\nA. FALSE IMPLICATION & ABSENCE OF OVERT ACTS:\nThe Petitioner submits that no specific overt act has been attributed to the Petitioner and the present proceedings have been initiated with oblique motives.\n\nB. STATUTORY COMPLIANCE & REQUISITE SAFEGUARDS:\nThe Petitioner has not violated any statutory provision and is entitled to the full protection of procedural safeguards guaranteed under the law.\n\nC. SETTLED JUDICIAL PRECEDENTS:\nThe Hon\'ble Supreme Court of India in landmark decisions has reiterated that personal liberty is paramount and the powers of this Hon\'ble Court under the statute must be exercised to prevent the abuse of the process of law.\n\nD. SOLVENT SURETIES & COOPERATION:\nThe Petitioner undertakes to fully cooperate with the proceedings, not to tamper with witnesses or evidence, and to furnish substantial solvent sureties to the satisfaction of the Court.'}
 
-3. The Petitioner states that from the inception of the matrimonial / transactional dispute, the 2nd Respondent has subjected the Petitioner to continuous physical, mental, emotional, and economic harassment, creating an atmosphere of insecurity and distress.
+4. The Petitioner has permanent residence within the jurisdiction of this Hon'ble Court and there is no likelihood of absconding or evading the process of law.
 
-4. The Petitioner states that on several occasions, the 2nd Respondent has used abusive and threatening communications through WhatsApp messages, voice calls, and other electronic media. The Petitioner possesses electronic records, messages, and call recordings in support of these assertions.
-
-${customFacts ? `5. SPECIFIC CASE FACTS & GROUNDS:\n${customFacts}\n` : ''}FAILURE TO TAKE EFFECTIVE POLICE ACTION:
-The Petitioner had approached the 1st Respondent police authorities seeking appropriate inquiry and registration of FIR. However, no effective criminal investigation or registration has been undertaken to the satisfaction of the Petitioner.
-
-The Petitioner therefore has no other effective and efficacious remedy except to approach this Hon'ble Court seeking appropriate directions under ${pleadingInfo.statutoryRef}.
-
-The Hon'ble Supreme Court of India has consistently held that where information discloses cognizable offences, a fair investigation must be ensured. The principles laid down in Lalita Kumari v. Government of Uttar Pradesh and Priyanka Srivastava v. State of Uttar Pradesh continue to govern the exercise of powers by the Magistrate and Court while considering petitions under the Sanhita.
+5. The Petitioner has not preferred any other petition or application before this Hon'ble Court or any other Court for the identical relief.
 
 PRAYER
 
-Therefore, it is most respectfully prayed that this Hon'ble Court may be pleased to:
+For the reasons stated above and in the accompanying affidavit, it is most respectfully prayed that this Hon'ble Court may be pleased to:
 
-a) direct the 1st Respondent/Inspector of Police to register an FIR on the basis of the Petitioner's complaint and conduct a fair, impartial, and effective investigation;
-b) direct the Investigating Officer to secure, preserve, and subject the relevant electronic devices, communications, and evidence to appropriate forensic examination;
-c) ${prayerNotes || 'direct the police authorities to take appropriate steps for the safety and protection of the Petitioner in accordance with law;'}
-d) direct the Investigating Officer to file the final report before the competent Court within a stipulated time frame; and
-e) pass such further or other orders as this Hon'ble Court may deem fit and proper in the interests of justice.
+a) ${prayerNotes || `grant ${pleadingInfo.label.toLowerCase()} in favor of the Petitioner in accordance with ${pleadingInfo.statutoryRef};`}
+b) grant interim relief / protection during the pendency of the present petition;
+c) pass such further or other orders as this Hon'ble Court may deem fit and proper in the circumstances of the case and thus render justice.
 
 Dated at ${tierInfo.city} on this the ${todayStr}.
 
 Petitioner.                                                                     Counsel for Petitioner.
 
-VERIFICATION.
+VERIFICATION
 
-I, ${clientName}, the Petitioner herein, do hereby verify that the contents of paragraphs 1 to 10 above are true and correct to the best of my knowledge, information, and belief and that I have not suppressed any material fact.
+I, ${clientName}, the Petitioner herein, do hereby solemnly declare and verify that the contents of paragraphs 1 to 5 above are true and correct to the best of my knowledge, information, and belief.
 
 Verified at ${tierInfo.city} on this ${todayStr}.
 
@@ -465,46 +510,44 @@ Petitioner.                                                                     
 
 LIST OF DOCUMENTS / ANNEXURES
 
-Annexure–A: Copies of WhatsApp communications, chats, and screenshots relating to the allegations.
-Annexure–B: Statement/list of property, particulars, and monetary transactions.
-Annexure–C: Electronic evidence, call recordings, and messages.
-Annexure–D: Copy of the complaint submitted before the Police Station.
-Annexure–E: Copies of representations submitted to higher police authorities.
-Annexure–F: Supporting identity and relationship documents.`;
+1. Annexure–A: Certified Copy of First Information Report / Case Details.
+2. Annexure–B: Supporting Identity and Residential Proof of Petitioner.
+3. Annexure–C: Relevant representations and statutory notices.`;
 
-    // 3. Affidavit (Exact Deponent Verification Format)
     const affidavit = `${tierInfo.headerTitle.toUpperCase()}
+${jurisdictionHeader}
 ${caseNo}
 
 In the matter of:
 
 ${clientName},
-W/o. / S/o. / D/o. 
-${clientAddress}.
+aged about 34 years,
+S/o. / D/o. / W/o. ________________,
+Residing at ${clientAddress}.
                                                         ... Petitioner / Deponent
 
-                                            Versus
+                                            — VERSUS —
 
-The Inspector of Police,
-Police Station,
-${tierInfo.city}.
-                                                        ... Complainant / 1st Respondent.
+1. The State Rep. by
+   The Inspector of Police,
+   Police Station,
+   ${tierInfo.city}.
+   (Crime No. ____ of 2026)
+                                                        ... 1st Respondent / Complainant
 
-                                            Versus
-
-Accused / 2nd Respondent,
-${clientAddress}.
-                                                        ... Accused / 2nd Respondent.
+2. The De-facto Complainant,
+   residing at the address in records.
+                                                        ... 2nd Respondent
 
 SUPPORTING VERIFICATION AFFIDAVIT OF THE PETITIONER
 
-I, ${clientName}, son/daughter/wife of, aged about years, residing at ${clientAddress}, do hereby solemnly affirm and sincerely state as follows:
+I, ${clientName}, residing at ${clientAddress}, do hereby solemnly affirm and sincerely state as follows:
 
-1. I am the Petitioner / Deponent herein and as such I am well acquainted with the facts and circumstances of the case.
+1. I am the Petitioner / Deponent herein and I am fully conversant with the facts of the case.
 
-2. I have read and understood the contents of the accompanying Memorandum of Petition and I state that the facts narrated in Paragraphs 1 to 10 are true and correct to the best of my knowledge, information, and belief.
+2. I have read and understood the contents of the accompanying Memorandum of Petition and I state that the facts narrated therein are true and correct to the best of my knowledge, information, and belief.
 
-3. I solemnly state that I have not filed any other application or petition before this Hon'ble Court or any other Subordinate Court for the same relief or cause of action.
+3. I state that no prior application or petition has been filed by me before this Hon'ble Court or any other Subordinate Court seeking the same or similar relief.
 
 4. I therefore pray that this Hon'ble Court may be pleased to accept this affidavit and allow the accompanying petition as prayed for and thus render justice.
 
@@ -516,14 +559,14 @@ and signed their name in my presence.
 BEFORE ME
 ADVOCATE / NOTARY PUBLIC / OATH COMMISSIONER`;
 
-    // 4. Vakalatnama & Backsheet Docket
     const vakalat = `${tierInfo.headerTitle.toUpperCase()}
+${jurisdictionHeader}
 ${caseNo}
 
 In the matter of:
 ${clientName}                                          ... Petitioner / Accused
-                                            -Versus-
-THE STATE REP. BY INSPECTOR OF POLICE                   ... Respondent
+                                            — VERSUS —
+THE STATE REP. BY INSPECTOR OF POLICE & ANOTHER         ... Respondents
 
 VAKALATNAMA / MEMORANDUM OF APPEARANCE
 
@@ -539,7 +582,7 @@ to be my Advocate in the above matter, to appear, plead, act, file petitions, re
 Executed by me at ${tierInfo.city} on this ${todayStr}.
 
 [ADVOCATES' WELFARE FUND STAMP: ₹30 / ₹100]
-[COURT FEE STAMP]
+[COURT FEE STAMP: ₹10 / ₹20]
 
 ________________________                                ________________________
 SIGNATURE OF CLIENT                                      ACCEPTED & SIGNED BY COUNSEL
@@ -554,20 +597,16 @@ ${caseNo}
 ${clientName}
                                                         ... Petitioner / Deponent
 
-                                            Versus
+                                            — VERSUS —
 
-The Inspector of Police,
-                                                        ... Complainant
+The Inspector of Police & Another,
+                                                        ... Respondents.
 
-                                            Versus
-
-Accused / 2nd Respondent,
-                                                        ... Accused / Respondent.
-
-PETITION UNDER ${pleadingInfo.statutoryRef.toUpperCase()}
+MEMORANDUM OF ${pleadingInfo.label.toUpperCase()} FILED UNDER ${pleadingInfo.statutoryRef.toUpperCase()}
 
 ${advocateName} (${barEnrolment})
-Counsel for petitioner / defacto complainant.`;
+Counsel for Petitioner
+${chamberAddress}`;
 
     const sections: PaperbookSections = {
         indexSheet: 'Index Sheet generated with page numbers.',

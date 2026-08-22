@@ -248,6 +248,11 @@ const createCourtFormattedElements = (
             line.startsWith('SUPPORTING VERIFICATION') ||
             line.startsWith('VAKALATNAMA') ||
             line.startsWith('VERIFICATION.') ||
+            line.startsWith('LEGAL NOTICE') ||
+            line.startsWith('STATUTORY NOTICE') ||
+            line.startsWith('REPLY TO LEGAL NOTICE') ||
+            line.startsWith('SCHEDULE OF PROPERTY') ||
+            line.startsWith('SCHEDULE PROPERTY') ||
             line.startsWith('JEWELS GIVEN FOR WEDDING.');
 
         if (isCenteredHeading) {
@@ -264,6 +269,9 @@ const createCourtFormattedElements = (
                             underline:
                                 line.startsWith('SYNOPSIS') ||
                                 line.startsWith('CHRONOLOGICAL') ||
+                                line.startsWith('LEGAL NOTICE') ||
+                                line.startsWith('STATUTORY NOTICE') ||
+                                line.startsWith('SCHEDULE') ||
                                 line.startsWith('JEWELS')
                                     ? {}
                                     : undefined,
@@ -279,6 +287,14 @@ const createCourtFormattedElements = (
         const isLeftSubHeading =
             line.startsWith('In the matter of:') ||
             line.startsWith('IN THE MATTER OF:') ||
+            line.startsWith('FROM:') ||
+            line.startsWith('From:') ||
+            line.startsWith('TO:') ||
+            line.startsWith('To:') ||
+            line.startsWith('SUBJECT:') ||
+            line.startsWith('Subject:') ||
+            line.startsWith('REF:') ||
+            line.startsWith('Ref:') ||
             line.startsWith('PRAYER') ||
             line.startsWith('LIST OF DOCUMENTS / ANNEXURES') ||
             line.startsWith('JEWELLERY / STRIDHAN') ||

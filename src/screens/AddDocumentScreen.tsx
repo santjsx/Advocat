@@ -4,7 +4,8 @@ import {
     TextInput, Alert, ActivityIndicator
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
-import { MaterialCommunityIcons } from '@expo/vector-icons';
+import { MaterialCommunityIcons, Ionicons } from '@expo/vector-icons';
+import * as Haptics from 'expo-haptics';
 import { useAppStore } from '../store/useAppStore';
 import { useTheme } from '../theme/ThemeContext';
 import { NativeStackScreenProps } from '@react-navigation/native-stack';
@@ -64,12 +65,18 @@ export const AddDocumentScreen: React.FC<Props> = ({ navigation, route }) => {
 
     const handleSave = async () => {
         if (!selectedCaseId) {
-            Alert.alert('Error', 'Please select a case first.');
+            showToast({
+                message: 'Please select a case first.',
+                type: 'error'
+            });
             return;
         }
 
         if (selectedFiles.length === 0) {
-            Alert.alert('Error', 'Please select at least one document.');
+            showToast({
+                message: 'Please select at least one document.',
+                type: 'error'
+            });
             return;
         }
 
@@ -78,14 +85,6 @@ export const AddDocumentScreen: React.FC<Props> = ({ navigation, route }) => {
             await Promise.all(selectedFiles.map(async (file, index) => {
                 const docId = uuidv4();
                 const versionId = uuidv4();
-
-                // If single file, use the explicit name input. If multiple, use filename (or input if user wants to tag all same, but typical behavior is filename)
-                // Let's use the explicit name for the first file if provided, otherwise filename. 
-                // Actually, if multiple files, usually they want individual names.
-                // Simple logic: If 1 file, use `name` OR filename. If >1 file, use filename (maybe append `name` as prefix if typed?)
-                // Let's go with: Single file -> `name`. Multiple -> `filename` (ignoring `name` input to avoid duplicates, or maybe append).
-                // Better UX: If multiple, disable name input or strict "Batch Upload" title. 
-                // Current Plan: If 1 file, use `name`. If >1, use `file.name`.
 
                 let docName = file.name.split('.')[0];
                 if (selectedFiles.length === 1 && name.trim()) {
@@ -132,7 +131,10 @@ export const AddDocumentScreen: React.FC<Props> = ({ navigation, route }) => {
             navigation.goBack();
         } catch (e) {
             console.error('Save error:', e);
-            Alert.alert('Error', 'Failed to save documents.');
+            showToast({
+                message: 'Failed to save documents.',
+                type: 'error'
+            });
         } finally {
             setLoading(false);
         }
@@ -141,10 +143,18 @@ export const AddDocumentScreen: React.FC<Props> = ({ navigation, route }) => {
 
 
     return (
-        <SafeAreaView style={styles.container} edges={['top']}>
+        <SafeAreaView style={styles.container} edges={['top', 'bottom']}>
             <ScrollView contentContainerStyle={styles.content}>
                 <View style={styles.header}>
-                    <TouchableOpacity onPress={() => navigation.goBack()} style={[styles.headerButton, styles.cancelButton]}>
+                    <TouchableOpacity
+                        onPress={() => {
+                            Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
+                            navigation.goBack();
+                        }}
+                        style={[styles.headerButton, styles.cancelButton]}
+                        activeOpacity={0.7}
+                    >
+                        <Ionicons name="close" size={15} color={colors.critical} />
                         <Text style={[styles.headerButtonText, styles.cancelButtonText]}>Cancel</Text>
                     </TouchableOpacity>
                     <Text style={styles.title}>Add Document</Text>
@@ -282,12 +292,22 @@ export const AddDocumentScreen: React.FC<Props> = ({ navigation, route }) => {
 
 const createStyles = (colors: any, spacing: any, layout: any) => StyleSheet.create({
     container: { flex: 1, backgroundColor: colors.background },
-    content: { padding: spacing.m, paddingBottom: 100 },
+    content: { padding: spacing.m, paddingBottom: 140 },
     header: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginBottom: spacing.l },
     headerButton: { paddingHorizontal: spacing.l, paddingVertical: 8, borderRadius: 20, justifyContent: 'center', alignItems: 'center' },
-    cancelButton: { backgroundColor: 'transparent' },
-    headerButtonText: { fontSize: 14, fontWeight: '600' },
-    cancelButtonText: { color: colors.textSecondary },
+    cancelButton: {
+        backgroundColor: colors.critical + '14',
+        borderWidth: 1,
+        borderColor: colors.critical + '40',
+        flexDirection: 'row',
+        alignItems: 'center',
+        gap: 4,
+        paddingHorizontal: 12,
+        paddingVertical: 6,
+        borderRadius: 18,
+    },
+    headerButtonText: { fontSize: 13, fontWeight: '600' },
+    cancelButtonText: { color: colors.critical, fontWeight: '700' },
     title: { color: colors.textPrimary, fontSize: 20, fontWeight: '600' },
     label: { color: colors.textSecondary, fontSize: 14, fontWeight: '500', marginTop: spacing.m, marginBottom: spacing.s },
     input: { backgroundColor: colors.surface, color: colors.textPrimary, padding: spacing.m, borderRadius: layout.borderRadius, fontSize: 16, borderWidth: 1, borderColor: colors.border },

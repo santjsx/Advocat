@@ -1,3 +1,4 @@
+// eCourts India & Case Screenshot AI Importer Modal - UI/UX Pro Max Edition
 import React, { useState } from 'react';
 import {
     View,
@@ -5,35 +6,27 @@ import {
     StyleSheet,
     Modal,
     TouchableOpacity,
-    TextInput,
     ScrollView,
     ActivityIndicator,
-    Alert,
-    Linking,
     Image,
     Platform,
+    Animated,
 } from 'react-native';
-import { SafeAreaView, useSafeAreaInsets } from 'react-native-safe-area-context';
+import { SafeAreaView } from 'react-native-safe-area-context';
 import { Ionicons, MaterialCommunityIcons } from '@expo/vector-icons';
 import { LinearGradient } from 'expo-linear-gradient';
 import * as Haptics from 'expo-haptics';
-import * as Clipboard from 'expo-clipboard';
 import { useTheme } from '../theme/ThemeContext';
 import { useAppStore } from '../store/useAppStore';
+import { ECourtsCaseResult } from '../models/ECourts';
+import { convertECourtsToAdvocatCase } from '../services/eCourtsService';
 import {
-    ECourtsCaseResult,
-    TAMIL_NADU_COURTS,
-    COMMON_CASE_TYPES,
-} from '../models/ECourts';
-import {
-    fetchECourtsByCNR,
-    fetchECourtsByCaseNumber,
-    convertECourtsToAdvocatCase,
-    formatCNRDisplay,
-    cleanCNR,
-} from '../services/eCourtsService';
-import { parseECourtsText } from '../services/eCourtsTextParser';
-import { pickECourtsScreenshot, extractCaseFromScreenshot } from '../services/eCourtsVisionService';
+    pickECourtsScreenshots,
+    captureECourtsPhoto,
+    extractCaseFromScreenshots,
+    SelectedImageItem,
+} from '../services/eCourtsVisionService';
+import { SmoothPressable } from './SmoothPressable';
 import dayjs from 'dayjs';
 
 interface Props {
@@ -42,157 +35,211 @@ interface Props {
     onCaseImported: (caseId: string) => void;
 }
 
-type TabMode = 'SCREENSHOT' | 'PASTE' | 'CNR';
+type ScanStep = 'IDLE' | 'OCR' | 'VALIDATING' | 'STRUCTURING' | 'SUCCESS' | 'ERROR';
 
 export const ECourtsSearchModal: React.FC<Props> = ({
     visible,
     onClose,
     onCaseImported,
 }) => {
-    const { colors, spacing } = useTheme();
-    const insets = useSafeAreaInsets();
+    const { colors, spacing, mode } = useTheme();
+    const isDark = mode === 'dark';
     const addCase = useAppStore(state => state.addCase);
     const addDeadline = useAppStore(state => state.addDeadline);
     const advocateProfile = useAppStore(state => state.advocateProfile);
 
-    const [activeTab, setActiveTab] = useState<TabMode>('SCREENSHOT');
-
-    // Screenshot Tab State
-    const [selectedImageUri, setSelectedImageUri] = useState<string | null>(null);
-    const [selectedImageBase64, setSelectedImageBase64] = useState<string | null>(null);
-
-    // Quick-Paste Tab State
-    const [pasteText, setPasteText] = useState('');
-
-    // CNR Tab State
-    const [cnrInput, setCnrInput] = useState('');
-    const [selectedCourtId, setSelectedCourtId] = useState(TAMIL_NADU_COURTS[0].id);
-    const [selectedCaseType, setSelectedCaseType] = useState(COMMON_CASE_TYPES[0].code);
-    const [caseNumberInput, setCaseNumberInput] = useState('');
-    const [caseYearInput, setCaseYearInput] = useState(new Date().getFullYear().toString());
+    // Multi-Screenshot State (1 to 5 images)
+    const [selectedImages, setSelectedImages] = useState<SelectedImageItem[]>([]);
+    const [activePreviewIndex, setActivePreviewIndex] = useState<number>(0);
 
     // Processing State
     const [loading, setLoading] = useState(false);
+    const [scanStep, setScanStep] = useState<ScanStep>('IDLE');
     const [loadingMsg, setLoadingMsg] = useState('Extracting court details...');
     const [searchResult, setSearchResult] = useState<ECourtsCaseResult | null>(null);
     const [errorMsg, setErrorMsg] = useState<string | null>(null);
 
-    // Handle Screenshot Picking
-    const handlePickScreenshot = async () => {
+    // Animations
+    const scanLineAnim = React.useRef(new Animated.Value(0)).current;
+    const progressAnim = React.useRef(new Animated.Value(0.1)).current;
+    const errorFadeAnim = React.useRef(new Animated.Value(0)).current;
+
+    // Trigger Laser Scan Animation
+    React.useEffect(() => {
+        if (loading) {
+            Animated.loop(
+                Animated.sequence([
+                    Animated.timing(scanLineAnim, {
+                        toValue: 1,
+                        duration: 1600,
+                        useNativeDriver: true,
+                    }),
+                    Animated.timing(scanLineAnim, {
+                        toValue: 0,
+                        duration: 1600,
+                        useNativeDriver: true,
+                    }),
+                ])
+            ).start();
+        } else {
+            scanLineAnim.setValue(0);
+        }
+    }, [loading]);
+
+    // Animate Progress Bar per Step
+    React.useEffect(() => {
+        let target = 0.15;
+        if (scanStep === 'OCR') target = 0.35;
+        else if (scanStep === 'VALIDATING') target = 0.68;
+        else if (scanStep === 'STRUCTURING') target = 0.95;
+        else if (scanStep === 'SUCCESS') target = 1.0;
+
+        Animated.spring(progressAnim, {
+            toValue: target,
+            tension: 80,
+            friction: 12,
+            useNativeDriver: false,
+        }).start();
+    }, [scanStep]);
+
+    // Animate Error Card entrance
+    React.useEffect(() => {
+        if (errorMsg) {
+            errorFadeAnim.setValue(0);
+            Animated.timing(errorFadeAnim, {
+                toValue: 1,
+                duration: 350,
+                useNativeDriver: true,
+            }).start();
+        }
+    }, [errorMsg]);
+
+    // Reset state & Clear all images
+    const handleReset = () => {
+        setSelectedImages([]);
+        setActivePreviewIndex(0);
+        setSearchResult(null);
+        setErrorMsg(null);
+        setLoading(false);
+        setScanStep('IDLE');
+    };
+
+    // Handle Screenshot Selection from Gallery (1 to 5 total)
+    const handlePickScreenshots = async () => {
+        const remaining = 5 - selectedImages.length;
+        if (remaining <= 0) return;
+
         setErrorMsg(null);
         Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
 
-        const pick = await pickECourtsScreenshot();
-        if (!pick.cancelled && pick.uri && pick.base64) {
-            setSelectedImageUri(pick.uri);
-            setSelectedImageBase64(pick.base64);
-            // Auto extract on pick
-            await processScreenshot(pick.base64);
+        const pick = await pickECourtsScreenshots(remaining);
+        if (!pick.cancelled && pick.images && pick.images.length > 0) {
+            const current = [...selectedImages];
+            for (const img of pick.images) {
+                if (current.length < 5 && !current.some(x => x.uri === img.uri)) {
+                    current.push(img);
+                }
+            }
+            setSelectedImages(current);
+            // Default to first page so it starts cleanly from Page 1 of N
+            setActivePreviewIndex(0);
+            await processScreenshots(current);
         } else if (pick.error) {
             setErrorMsg(pick.error);
+            setScanStep('ERROR');
         }
     };
 
-    const processScreenshot = async (base64: string) => {
-        setLoading(true);
-        setLoadingMsg('Scanning eCourts screenshot...');
-        Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium);
+    // Handle Camera Snap for physical cause list / court board
+    const handleCapturePhoto = async () => {
+        if (selectedImages.length >= 5) return;
 
-        try {
-            const res = await extractCaseFromScreenshot(base64, advocateProfile?.deepseekApiKey);
-            if (res.success && res.data) {
-                setSearchResult(res.data);
-                Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
-            } else {
-                setErrorMsg(res.message || 'Could not parse screenshot details.');
-                setSearchResult(null);
-            }
-        } catch (err: any) {
-            setErrorMsg(err?.message || 'Error processing image.');
-            setSearchResult(null);
-        } finally {
-            setLoading(false);
-        }
-    };
-
-    // Handle Clipboard Paste
-    const handlePasteFromClipboard = async () => {
+        setErrorMsg(null);
         Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
-        const text = await Clipboard.getStringAsync();
-        if (text && text.trim()) {
-            setPasteText(text);
-            handleParseText(text);
+
+        const pick = await captureECourtsPhoto();
+        if (!pick.cancelled && pick.images && pick.images.length > 0) {
+            const current = [...selectedImages, ...pick.images].slice(0, 5);
+            setSelectedImages(current);
+            setActivePreviewIndex(selectedImages.length === 0 ? 0 : current.length - 1);
+            await processScreenshots(current);
+        } else if (pick.error) {
+            setErrorMsg(pick.error);
+            setScanStep('ERROR');
+        }
+    };
+
+    // Remove single image accidentally selected
+    const handleRemoveImage = (indexToRemove: number) => {
+        Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
+        const updated = selectedImages.filter((_, idx) => idx !== indexToRemove);
+        setSelectedImages(updated);
+        setLoading(false);
+        setScanStep('IDLE');
+        setSearchResult(null);
+        setErrorMsg(null);
+
+        if (updated.length === 0) {
+            handleReset();
         } else {
-            Alert.alert('Clipboard Empty', 'Please copy case text from eCourts, WhatsApp, or SMS first.');
+            const newIndex = Math.min(activePreviewIndex, updated.length - 1);
+            setActivePreviewIndex(newIndex);
         }
     };
 
-    const handleParseText = (textToParse?: string) => {
-        const text = textToParse || pasteText;
-        if (!text.trim()) {
-            setErrorMsg('Please paste case text to parse.');
-            return;
-        }
+    // Process 1 to 5 Screenshots with Combined OCR & AI Extraction
+    const processScreenshots = async (imagesToProcess: SelectedImageItem[]) => {
+        if (imagesToProcess.length === 0) return;
 
-        setErrorMsg(null);
         setLoading(true);
-        setLoadingMsg('Parsing eCourts text...');
-        Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium);
-
-        setTimeout(() => {
-            const res = parseECourtsText(text);
-            if (res.success && res.data) {
-                setSearchResult(res.data);
-                Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
-            } else {
-                setErrorMsg(res.message || 'Could not recognize case text format.');
-                setSearchResult(null);
-            }
-            setLoading(false);
-        }, 300);
-    };
-
-    // Handle CNR / Case Number Search
-    const handleSearchCNR = async () => {
         setErrorMsg(null);
-        setLoading(true);
-        setLoadingMsg('Searching eCourts registry...');
+        setSearchResult(null);
+        setScanStep('OCR');
+        setLoadingMsg(
+            imagesToProcess.length > 1
+                ? `Scanning ${imagesToProcess.length} screenshots with Multi-Language OCR...`
+                : 'Scanning screenshot with Multi-Language OCR...'
+        );
         Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium);
 
         try {
-            if (cnrInput.trim()) {
-                const res = await fetchECourtsByCNR(cnrInput);
-                if (res.success && res.data) {
-                    setSearchResult(res.data);
-                    Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
-                } else {
-                    setErrorMsg(res.message || 'No case found for this CNR Number.');
-                    setSearchResult(null);
+            const res = await extractCaseFromScreenshots(
+                imagesToProcess.map(img => img.base64),
+                advocateProfile?.deepseekApiKey,
+                (status, pageIndex) => {
+                    setLoadingMsg(status);
+                    if (typeof pageIndex === 'number') {
+                        setActivePreviewIndex(pageIndex);
+                    }
+                    if (status.includes('Verifying')) setScanStep('VALIDATING');
+                    if (status.includes('Structuring') || status.includes('AI')) setScanStep('STRUCTURING');
                 }
+            );
+
+            if (res.success && res.data) {
+                setSearchResult(res.data);
+                setScanStep('SUCCESS');
+                setActivePreviewIndex(0);
+                Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
             } else {
-                const res = await fetchECourtsByCaseNumber(
-                    selectedCourtId,
-                    selectedCaseType,
-                    caseNumberInput,
-                    caseYearInput
-                );
-                if (res.success && res.data) {
-                    setSearchResult(res.data);
-                    Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
-                } else {
-                    setErrorMsg(res.message || 'No case found matching these parameters.');
-                    setSearchResult(null);
-                }
+                Haptics.notificationAsync(Haptics.NotificationFeedbackType.Error);
+                const err = res.message || 'The selected screenshots do not contain recognized court case details, eCourts status, or judicial records.';
+                setErrorMsg(err);
+                setScanStep('ERROR');
+                setSearchResult(null);
             }
         } catch (err: any) {
-            setErrorMsg(err?.message || 'Error querying eCourts.');
+            Haptics.notificationAsync(Haptics.NotificationFeedbackType.Error);
+            const errText = err?.message || 'Error processing screenshots. Please try again.';
+            setErrorMsg(errText);
+            setScanStep('ERROR');
             setSearchResult(null);
         } finally {
             setLoading(false);
         }
     };
 
-    // Import into Native Advocat Store
+    // Import extracted case into Advocat store
     const handleImport = () => {
         if (!searchResult) return;
 
@@ -207,65 +254,620 @@ export const ECourtsSearchModal: React.FC<Props> = ({
         }
 
         Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
-        Alert.alert(
-            'Case Imported Successfully! ⚖️',
-            `"${searchResult.caseTitle}" has been added to your active practice matters with statutory sections and scheduled court hearings.`,
-            [
-                {
-                    text: 'View Case',
-                    onPress: () => {
-                        onClose();
-                        onCaseImported(newCase.id);
-                    },
-                },
-            ]
-        );
+        onClose();
+        onCaseImported(newCase.id);
     };
 
-    // Sample Text Loaders
-    const loadSampleText = () => {
-        const sample = `Judicial Magistrate,Tiruvottiyur
+    const styles = createStyles(colors, spacing, isDark);
 
-Case Details
-Filing Number: CRLMP/833/2026
-Filing Date: 13-03-2026
-Registration Number: CRLMP/203/2026
-Registration Date: 13-03-2026
-CNR Number: TNTR280008372026
+    const scanLineTranslateY = scanLineAnim.interpolate({
+        inputRange: [0, 1],
+        outputRange: [0, 150],
+    });
 
-Case Status
-First Hearing Date: 13-03-2026
-Next Hearing Date: 07-09-2026
-Case Stage: Evidence
-Court Number and Judge: 2 - Judicial Magistrate
-Last Business Date: 21-08-2026
+    const isStep1Done = scanStep === 'VALIDATING' || scanStep === 'STRUCTURING' || scanStep === 'SUCCESS';
+    const isStep2Done = scanStep === 'STRUCTURING' || scanStep === 'SUCCESS';
+    const isStep3Done = scanStep === 'SUCCESS';
 
-Petitioner and Advocate
-1) Thilagam
+    return (
+        <Modal
+            visible={visible}
+            animationType="slide"
+            presentationStyle="pageSheet"
+            statusBarTranslucent
+            onRequestClose={onClose}
+        >
+            <SafeAreaView style={styles.container} edges={['top', 'bottom']}>
+                {/* Header Bar */}
+                <View style={styles.header}>
+                    <View style={styles.headerLeft}>
+                        <View style={styles.headerIconBox}>
+                            <MaterialCommunityIcons name="image-search-outline" size={20} color="#D4AF37" />
+                        </View>
+                        <View>
+                            <Text style={styles.headerTitle}>eCourts Screenshot Importer</Text>
+                            <Text style={styles.headerSubtitle}>AI Case Screenshot Scanner & Extractor</Text>
+                        </View>
+                    </View>
+                    <SmoothPressable
+                        onPress={onClose}
+                        style={styles.closeButton}
+                        accessibilityLabel="Close modal"
+                        hitSlop={12}
+                        haptic="light"
+                        scaleTo={0.88}
+                    >
+                        <Ionicons name="close" size={18} color={isDark ? '#E5E7EB' : '#374151'} />
+                    </SmoothPressable>
+                </View>
 
-Respondent and Advocate
-1) M8 Sathangadu
+                <ScrollView contentContainerStyle={styles.content} keyboardShouldPersistTaps="handled">
+                    
+                    {/* Primary Hero Dropzone Card */}
+                    <View style={styles.dropzoneCard}>
+                        {selectedImages.length === 0 ? (
+                            <SmoothPressable
+                                style={styles.uploadDropBox}
+                                onPress={handlePickScreenshots}
+                                disabled={loading}
+                                haptic="medium"
+                                scaleTo={0.98}
+                            >
+                                <View style={styles.uploadIconOuterRing}>
+                                    <View style={styles.uploadIconCircle}>
+                                        <MaterialCommunityIcons name="image-multiple-outline" size={28} color="#D4AF37" />
+                                    </View>
+                                </View>
+                                <Text style={styles.uploadTitle}>Upload Case Screenshots (1 to 5)</Text>
+                                <Text style={styles.uploadSubtitle}>
+                                    Select 1 to 5 screenshots of eCourts app, High Court cause list, Police FIR, or case notice
+                                </Text>
+                                <View style={styles.uploadFeaturesRow}>
+                                    <View style={styles.uploadFeatureBadge}>
+                                        <Ionicons name="scan-outline" size={12} color="#D4AF37" />
+                                        <Text style={styles.uploadFeatureBadgeText}>OCR Vision AI</Text>
+                                    </View>
+                                    <View style={styles.uploadFeatureBadge}>
+                                        <Ionicons name="layers-outline" size={12} color="#D4AF37" />
+                                        <Text style={styles.uploadFeatureBadgeText}>Multi-Page Merge</Text>
+                                    </View>
+                                    <View style={styles.uploadFeatureBadge}>
+                                        <Ionicons name="shield-checkmark-outline" size={12} color="#10B981" />
+                                        <Text style={[styles.uploadFeatureBadgeText, { color: '#10B981' }]}>100% Private</Text>
+                                    </View>
+                                </View>
+                            </SmoothPressable>
+                        ) : (
+                            <View style={styles.previewBox}>
+                                <Image
+                                    source={{ uri: selectedImages[activePreviewIndex]?.uri || selectedImages[0].uri }}
+                                    style={styles.imagePreview}
+                                />
+                                
+                                {/* High-contrast Top Gradient Overlay for Header Buttons */}
+                                <LinearGradient
+                                    colors={['rgba(0, 0, 0, 0.85)', 'rgba(0, 0, 0, 0.4)', 'transparent']}
+                                    style={styles.previewTopGradient}
+                                    pointerEvents="none"
+                                />
 
-Act
-Under Act(s): CODE OF CRIMINAL PROCEDURE, 1973
-Under Section(s): 156
+                                {/* Animated Laser Scanner Sweep Beam */}
+                                {loading && (
+                                    <Animated.View
+                                        style={[
+                                            styles.scannerLaserBeam,
+                                            { transform: [{ translateY: scanLineTranslateY }] },
+                                        ]}
+                                    >
+                                        <LinearGradient
+                                            colors={['rgba(212, 175, 55, 0)', 'rgba(212, 175, 55, 0.85)', 'rgba(212, 175, 55, 0)']}
+                                            start={{ x: 0, y: 0 }}
+                                            end={{ x: 1, y: 0 }}
+                                            style={styles.laserLine}
+                                        />
+                                    </Animated.View>
+                                )}
 
-FIR Details
-Police Station: Sathangadu P.S
-FIR Number: 2370
-Year: 2020`;
+                                <View style={styles.previewTopBar}>
+                                    <View style={styles.previewTagPill}>
+                                        <Ionicons name="images" size={11} color="#D4AF37" />
+                                        <Text style={styles.previewTagText}>
+                                            Page {activePreviewIndex + 1}/{selectedImages.length}
+                                        </Text>
+                                    </View>
+                                    <View style={styles.previewActionsRow}>
+                                        {selectedImages.length < 5 && (
+                                            <>
+                                                <SmoothPressable
+                                                    onPress={handlePickScreenshots}
+                                                    disabled={loading}
+                                                    style={styles.changeImageBtn}
+                                                    haptic="light"
+                                                    scaleTo={0.92}
+                                                >
+                                                    <Ionicons name="images-outline" size={11} color="#FFFFFF" />
+                                                    <Text style={styles.changeImageText}>Gallery</Text>
+                                                </SmoothPressable>
+                                                <SmoothPressable
+                                                    onPress={handleCapturePhoto}
+                                                    disabled={loading}
+                                                    style={styles.changeImageBtn}
+                                                    haptic="light"
+                                                    scaleTo={0.92}
+                                                >
+                                                    <Ionicons name="camera-outline" size={11} color="#FFFFFF" />
+                                                    <Text style={styles.changeImageText}>Camera</Text>
+                                                </SmoothPressable>
+                                            </>
+                                        )}
+                                        <SmoothPressable
+                                            onPress={handleReset}
+                                            disabled={loading}
+                                            style={styles.clearAllBtn}
+                                            haptic="light"
+                                            scaleTo={0.92}
+                                        >
+                                            <Ionicons name="trash-outline" size={11} color="#FFFFFF" />
+                                            <Text style={styles.changeImageText}>Clear</Text>
+                                        </SmoothPressable>
+                                    </View>
+                                </View>
+                            </View>
+                        )}
 
-        setPasteText(sample);
-        handleParseText(sample);
-    };
+                        {/* Selected Images Horizontal Thumbnail Strip (1 to 5) */}
+                        {selectedImages.length > 0 && (
+                            <View style={styles.thumbnailsContainer}>
+                                <View style={styles.thumbnailsHeaderRow}>
+                                    <Text style={styles.thumbnailsTitle}>
+                                        SELECTED SCREENSHOTS ({selectedImages.length}/5)
+                                    </Text>
+                                    <Text style={styles.thumbnailsHint}>
+                                        Tap to view • (✕) to remove
+                                    </Text>
+                                </View>
+                                <ScrollView
+                                    horizontal
+                                    showsHorizontalScrollIndicator={false}
+                                    contentContainerStyle={styles.thumbnailsScrollContent}
+                                >
+                                    {selectedImages.map((img, index) => {
+                                        const isActive = activePreviewIndex === index;
+                                        return (
+                                            <View key={img.uri + index} style={[styles.thumbnailWrapper, isActive && styles.thumbnailWrapperActive]}>
+                                                <SmoothPressable
+                                                    onPress={() => {
+                                                        Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
+                                                        setActivePreviewIndex(index);
+                                                    }}
+                                                    haptic="selection"
+                                                    scaleTo={0.94}
+                                                    style={styles.thumbnailPressable}
+                                                >
+                                                    <Image source={{ uri: img.uri }} style={styles.thumbnailImg} />
+                                                    <View style={styles.thumbnailPageBadge}>
+                                                        <Text style={styles.thumbnailPageText}>#{index + 1}</Text>
+                                                    </View>
+                                                </SmoothPressable>
+                                                <SmoothPressable
+                                                    onPress={() => handleRemoveImage(index)}
+                                                    disabled={loading}
+                                                    style={styles.thumbnailRemoveBtn}
+                                                    hitSlop={8}
+                                                    haptic="medium"
+                                                    scaleTo={0.88}
+                                                    accessibilityLabel={`Remove screenshot ${index + 1}`}
+                                                >
+                                                    <Ionicons name="close" size={12} color="#FFFFFF" />
+                                                </SmoothPressable>
+                                            </View>
+                                        );
+                                    })}
 
-    const openOfficialPortal = () => {
-        Linking.openURL('https://services.ecourts.gov.in/ecourtindia_v6/#/cases/cnr').catch(() => {
-            Linking.openURL('https://services.ecourts.gov.in');
-        });
-    };
+                                    {selectedImages.length < 5 && (
+                                        <SmoothPressable
+                                            onPress={handlePickScreenshots}
+                                            disabled={loading}
+                                            style={styles.thumbnailAddBtn}
+                                            haptic="light"
+                                            scaleTo={0.94}
+                                        >
+                                            <Ionicons name="add-circle-outline" size={22} color="#D4AF37" />
+                                            <Text style={styles.thumbnailAddText}>Add ({selectedImages.length}/5)</Text>
+                                        </SmoothPressable>
+                                    )}
+                                </ScrollView>
+                            </View>
+                        )}
 
-    const styles = StyleSheet.create({
+                        {/* Interactive Dual Action Buttons when no images selected */}
+                        {selectedImages.length === 0 && !loading && (
+                            <View style={styles.actionButtonsRow}>
+                                <SmoothPressable
+                                    style={styles.primaryButton}
+                                    onPress={handlePickScreenshots}
+                                    haptic="medium"
+                                    scaleTo={0.96}
+                                >
+                                    <LinearGradient
+                                        colors={['#D4AF37', '#B8860B']}
+                                        start={{ x: 0, y: 0 }}
+                                        end={{ x: 1, y: 0 }}
+                                        style={styles.primaryGradient}
+                                    >
+                                        <MaterialCommunityIcons name="image-multiple" size={18} color="#000000" />
+                                        <Text style={styles.primaryButtonText} numberOfLines={1}>Select Screenshots</Text>
+                                    </LinearGradient>
+                                </SmoothPressable>
+
+                                <SmoothPressable
+                                    style={styles.secondaryButton}
+                                    onPress={handleCapturePhoto}
+                                    haptic="medium"
+                                    scaleTo={0.96}
+                                >
+                                    <Ionicons name="camera-outline" size={18} color="#D4AF37" />
+                                    <Text style={styles.secondaryButtonText} numberOfLines={1}>Take Photo</Text>
+                                </SmoothPressable>
+                            </View>
+                        )}
+
+                        {/* Manual Re-Analyze Trigger if images attached & not loading & no success result */}
+                        {selectedImages.length > 0 && !loading && !searchResult && (
+                            <View style={{ marginTop: 12 }}>
+                                <SmoothPressable
+                                    style={styles.primaryButton}
+                                    onPress={() => processScreenshots(selectedImages)}
+                                    haptic="heavy"
+                                    scaleTo={0.96}
+                                >
+                                    <LinearGradient
+                                        colors={['#D4AF37', '#B8860B']}
+                                        start={{ x: 0, y: 0 }}
+                                        end={{ x: 1, y: 0 }}
+                                        style={styles.primaryGradient}
+                                    >
+                                        <MaterialCommunityIcons name="lightning-bolt" size={18} color="#000000" />
+                                        <Text style={styles.primaryButtonText}>
+                                            Scan & Extract ({selectedImages.length} Image{selectedImages.length > 1 ? 's' : ''})
+                                        </Text>
+                                    </LinearGradient>
+                                </SmoothPressable>
+                            </View>
+                        )}
+
+                        {/* Live Step Progress Display (Modern Holographic HUD) */}
+                        {loading && (
+                            <View style={styles.scanningHud}>
+                                <View style={styles.hudHeader}>
+                                    <View style={styles.hudBeaconIconBox}>
+                                        <MaterialCommunityIcons name="radar" size={18} color="#D4AF37" />
+                                    </View>
+                                    <View style={{ flex: 1 }}>
+                                        <Text style={styles.hudTitle} numberOfLines={1}>{loadingMsg}</Text>
+                                        <Text style={styles.hudSubtext}>Multi-Language OCR Engine Active</Text>
+                                    </View>
+                                    <ActivityIndicator size="small" color="#D4AF37" />
+                                </View>
+
+                                {/* Animated Gradient Track Progress Line */}
+                                <View style={styles.progressTrackBg}>
+                                    <Animated.View
+                                        style={[
+                                            styles.progressTrackFill,
+                                            {
+                                                width: progressAnim.interpolate({
+                                                    inputRange: [0, 1],
+                                                    outputRange: ['0%', '100%'],
+                                                }),
+                                            },
+                                        ]}
+                                    />
+                                </View>
+
+                                {/* 3 Stage Status Badges */}
+                                <View style={styles.stepsRow}>
+                                    {/* Step 1: OCR */}
+                                    <View style={[styles.stepItem, (scanStep === 'OCR' || isStep1Done) && styles.stepActive]}>
+                                        <View style={[styles.stepDotCircle, isStep1Done ? styles.stepDotDone : scanStep === 'OCR' ? styles.stepDotCurrent : styles.stepDotPending]}>
+                                            {isStep1Done ? (
+                                                <Ionicons name="checkmark" size={10} color="#000000" />
+                                            ) : (
+                                                <Text style={[styles.stepDotNum, scanStep === 'OCR' && { color: '#000000' }]}>1</Text>
+                                            )}
+                                        </View>
+                                        <Text style={[styles.stepText, (scanStep === 'OCR' || isStep1Done) && styles.stepTextActive]}>
+                                            OCR Scan
+                                        </Text>
+                                    </View>
+
+                                    <View style={[styles.stepConnector, isStep1Done && styles.stepConnectorActive]} />
+
+                                    {/* Step 2: Legal Validation */}
+                                    <View style={[styles.stepItem, (scanStep === 'VALIDATING' || isStep2Done) && styles.stepActive]}>
+                                        <View style={[styles.stepDotCircle, isStep2Done ? styles.stepDotDone : scanStep === 'VALIDATING' ? styles.stepDotCurrent : styles.stepDotPending]}>
+                                            {isStep2Done ? (
+                                                <Ionicons name="checkmark" size={10} color="#000000" />
+                                            ) : (
+                                                <Text style={[styles.stepDotNum, scanStep === 'VALIDATING' && { color: '#000000' }]}>2</Text>
+                                            )}
+                                        </View>
+                                        <Text style={[styles.stepText, (scanStep === 'VALIDATING' || isStep2Done) && styles.stepTextActive]}>
+                                            Legal Check
+                                        </Text>
+                                    </View>
+
+                                    <View style={[styles.stepConnector, isStep2Done && styles.stepConnectorActive]} />
+
+                                    {/* Step 3: AI Structuring */}
+                                    <View style={[styles.stepItem, (scanStep === 'STRUCTURING' || isStep3Done) && styles.stepActive]}>
+                                        <View style={[styles.stepDotCircle, isStep3Done ? styles.stepDotDone : scanStep === 'STRUCTURING' ? styles.stepDotCurrent : styles.stepDotPending]}>
+                                            {isStep3Done ? (
+                                                <Ionicons name="checkmark" size={10} color="#000000" />
+                                            ) : (
+                                                <Text style={[styles.stepDotNum, scanStep === 'STRUCTURING' && { color: '#000000' }]}>3</Text>
+                                            )}
+                                        </View>
+                                        <Text style={[styles.stepText, (scanStep === 'STRUCTURING' || isStep3Done) && styles.stepTextActive]}>
+                                            AI Extraction
+                                        </Text>
+                                    </View>
+                                </View>
+                            </View>
+                        )}
+                    </View>
+
+                    {/* Executive AI Guardrail: No Judicial Records Detected */}
+                    {errorMsg && !loading && (
+                        <Animated.View style={[styles.errorCard, { opacity: errorFadeAnim }]}>
+                            <View style={styles.errorHeader}>
+                                <View style={styles.errorIconBadge}>
+                                    <MaterialCommunityIcons name="shield-alert-outline" size={20} color="#F87171" />
+                                </View>
+                                <View style={{ flex: 1 }}>
+                                    <Text style={styles.errorTitle}>No Judicial Records Detected</Text>
+                                    <Text style={styles.errorSubtitle}>Please upload an authentic court screenshot or document</Text>
+                                </View>
+                            </View>
+
+                            <Text style={styles.errorBodyText}>
+                                The uploaded screenshot does not contain recognizable case numbers, party names, CNR, FIR numbers, or cause list entries.
+                            </Text>
+
+                            {/* 4 Supported Case Formats Cards */}
+                            <View style={styles.supportedFormatsBox}>
+                                <Text style={styles.supportedFormatsHeader}>Supported Case Screenshot Formats:</Text>
+                                <View style={styles.formatPillsGrid}>
+                                    <View style={styles.formatPill}>
+                                        <Ionicons name="checkmark-circle" size={13} color="#10B981" />
+                                        <Text style={styles.formatPillText}>eCourts App Case Details</Text>
+                                    </View>
+                                    <View style={styles.formatPill}>
+                                        <Ionicons name="checkmark-circle" size={13} color="#10B981" />
+                                        <Text style={styles.formatPillText}>High Court / Cause Lists</Text>
+                                    </View>
+                                    <View style={styles.formatPill}>
+                                        <Ionicons name="checkmark-circle" size={13} color="#10B981" />
+                                        <Text style={styles.formatPillText}>Police FIR / Crime Copy</Text>
+                                    </View>
+                                    <View style={styles.formatPill}>
+                                        <Ionicons name="checkmark-circle" size={13} color="#10B981" />
+                                        <Text style={styles.formatPillText}>138 Cheque Notice / Memo</Text>
+                                    </View>
+                                </View>
+                            </View>
+
+                            {/* Harmonious Retry Action Buttons */}
+                            <View style={styles.errorActionRow}>
+                                <SmoothPressable
+                                    style={styles.errorPrimaryBtn}
+                                    onPress={handlePickScreenshots}
+                                    haptic="medium"
+                                    scaleTo={0.96}
+                                >
+                                    <LinearGradient
+                                        colors={['#D4AF37', '#B8860B']}
+                                        start={{ x: 0, y: 0 }}
+                                        end={{ x: 1, y: 0 }}
+                                        style={styles.errorPrimaryGradient}
+                                    >
+                                        <MaterialCommunityIcons name="image-plus" size={16} color="#000000" />
+                                        <Text style={styles.errorPrimaryText}>Choose from Gallery</Text>
+                                    </LinearGradient>
+                                </SmoothPressable>
+
+                                <SmoothPressable
+                                    style={styles.errorSecondaryBtn}
+                                    onPress={handleCapturePhoto}
+                                    haptic="medium"
+                                    scaleTo={0.96}
+                                >
+                                    <Ionicons name="camera-outline" size={16} color="#D4AF37" />
+                                    <Text style={styles.errorSecondaryText}>Take Photo</Text>
+                                </SmoothPressable>
+                            </View>
+                        </Animated.View>
+                    )}
+
+                    {/* Verified Case Result Card */}
+                    {searchResult && !loading && (
+                        <View style={styles.resultCard}>
+                            <View style={styles.resultTopBar}>
+                                <View style={styles.courtBadgePill}>
+                                    <MaterialCommunityIcons name="bank" size={13} color="#D4AF37" />
+                                    <Text style={styles.courtBadgeText} numberOfLines={1}>
+                                        {searchResult.courtName || 'Court of Competent Jurisdiction'}
+                                    </Text>
+                                </View>
+                                <View style={styles.liveVerifiedBadge}>
+                                    <View style={styles.liveDot} />
+                                    <Text style={styles.liveVerifiedText}>VERIFIED</Text>
+                                </View>
+                            </View>
+
+                            <Text style={styles.caseTitleText}>
+                                {searchResult.caseTitle || `${searchResult.petitioner?.name || 'Petitioner'} vs. ${searchResult.respondent?.name || 'Respondent'}`}
+                            </Text>
+
+                            {/* Quick Badges */}
+                            <View style={styles.quickBadgesRow}>
+                                {searchResult.cnr ? (
+                                    <View style={styles.cnrPill}>
+                                        <Text style={styles.cnrPillLabel}>CNR</Text>
+                                        <Text style={styles.cnrPillVal}>{searchResult.cnr}</Text>
+                                    </View>
+                                ) : null}
+                                {searchResult.caseNumber ? (
+                                    <View style={styles.caseNumPill}>
+                                        <Text style={styles.caseNumPillText}>{searchResult.caseNumber}</Text>
+                                    </View>
+                                ) : null}
+                            </View>
+
+                            {/* Next Hearing Card */}
+                            {searchResult.nextHearing?.date && (
+                                <View style={styles.hearingInfoCard}>
+                                    <View style={styles.hearingHeaderRow}>
+                                        <View style={{ flexDirection: 'row', alignItems: 'center', gap: 6 }}>
+                                            <MaterialCommunityIcons name="calendar-clock" size={16} color="#F59E0B" />
+                                            <Text style={styles.hearingLabel}>Next Court Hearing</Text>
+                                        </View>
+                                        <Text style={styles.hearingDateText}>
+                                            {dayjs(searchResult.nextHearing.date).format('DD MMMM YYYY')}
+                                        </Text>
+                                    </View>
+                                    {searchResult.nextHearing.purpose ? (
+                                        <Text style={styles.hearingPurposeText}>
+                                            Stage: <Text style={{ color: colors.textPrimary, fontWeight: '600' }}>{searchResult.nextHearing.purpose}</Text>
+                                        </Text>
+                                    ) : null}
+                                </View>
+                            )}
+
+                            {/* Parties Card */}
+                            <View style={styles.partiesCard}>
+                                {searchResult.petitioner?.name ? (
+                                    <View style={styles.partyItemRow}>
+                                        <Text style={styles.partyTag}>PETITIONER</Text>
+                                        <View style={{ flex: 1 }}>
+                                            <Text style={styles.partyName}>{searchResult.petitioner.name}</Text>
+                                            {searchResult.petitioner.advocate ? (
+                                                <Text style={styles.advocateName}>Adv. {searchResult.petitioner.advocate}</Text>
+                                            ) : null}
+                                        </View>
+                                    </View>
+                                ) : null}
+
+                                <View style={styles.partyDivider} />
+
+                                {searchResult.respondent?.name ? (
+                                    <View style={styles.partyItemRow}>
+                                        <Text style={styles.partyTag}>RESPONDENT</Text>
+                                        <View style={{ flex: 1 }}>
+                                            <Text style={styles.partyName}>{searchResult.respondent.name}</Text>
+                                            {searchResult.respondent.advocate ? (
+                                                <Text style={styles.advocateName}>Adv. {searchResult.respondent.advocate}</Text>
+                                            ) : null}
+                                        </View>
+                                    </View>
+                                ) : null}
+                            </View>
+
+                            {/* Statutory Sections */}
+                            {searchResult.sections && searchResult.sections.length > 0 && (
+                                <View style={styles.sectionsContainer}>
+                                    <Text style={styles.sectionsHeader}>Active Statutory Codes</Text>
+                                    <View style={styles.sectionsChipsRow}>
+                                        {searchResult.sections.map((act, idx) => (
+                                            <View key={idx} style={styles.sectionChipPill}>
+                                                <MaterialCommunityIcons name="gavel" size={11} color="#D4AF37" />
+                                                <Text style={styles.sectionChipText}>
+                                                    {act.act} {act.section}
+                                                </Text>
+                                            </View>
+                                        ))}
+                                    </View>
+                                </View>
+                            )}
+
+                            {/* Extraction Audit & Transparency Summary */}
+                            <View style={styles.auditContainer}>
+                                <View style={styles.auditHeaderRow}>
+                                    <MaterialCommunityIcons name="clipboard-check-outline" size={13} color="#D4AF37" />
+                                    <Text style={styles.auditHeaderText}>EXTRACTION AUDIT REPORT</Text>
+                                </View>
+                                <View style={styles.auditGrid}>
+                                    {/* Detected items */}
+                                    <View style={styles.auditSection}>
+                                        <Text style={styles.auditDetectedTitle}>✓ Detected from Screenshot:</Text>
+                                        {searchResult.petitioner?.name ? (
+                                            <Text style={styles.auditItemDetected}>• Petitioner: {searchResult.petitioner.name}</Text>
+                                        ) : null}
+                                        {searchResult.respondent?.name ? (
+                                            <Text style={styles.auditItemDetected}>• Respondent: {searchResult.respondent.name}</Text>
+                                        ) : null}
+                                        {searchResult.caseNumber ? (
+                                            <Text style={styles.auditItemDetected}>• Case No: {searchResult.caseNumber}</Text>
+                                        ) : null}
+                                        {searchResult.courtName ? (
+                                            <Text style={styles.auditItemDetected}>• Court: {searchResult.courtName}</Text>
+                                        ) : null}
+                                        {searchResult.nextHearing?.date ? (
+                                            <Text style={styles.auditItemDetected}>• Next Date: {dayjs(searchResult.nextHearing.date).format('DD/MM/YYYY')}</Text>
+                                        ) : null}
+                                        {searchResult.cnr ? (
+                                            <Text style={styles.auditItemDetected}>• CNR: {searchResult.cnr}</Text>
+                                        ) : null}
+                                    </View>
+
+                                    {/* Undetected / missing items */}
+                                    {(!searchResult.cnr || !searchResult.sections?.length || !searchResult.firDetails?.firNumber || !searchResult.nextHearing?.date) && (
+                                        <View style={[styles.auditSection, { marginTop: 6 }]}>
+                                            <Text style={styles.auditMissingTitle}>• Not in Screenshot (Can edit after import):</Text>
+                                            {!searchResult.cnr ? (
+                                                <Text style={styles.auditItemMissing}>• CNR Number: Not shown in image</Text>
+                                            ) : null}
+                                            {!searchResult.sections?.length ? (
+                                                <Text style={styles.auditItemMissing}>• Statutory Sections: Not shown in image</Text>
+                                            ) : null}
+                                            {!searchResult.firDetails?.firNumber ? (
+                                                <Text style={styles.auditItemMissing}>• FIR / Crime No: Not shown in image</Text>
+                                            ) : null}
+                                            {!searchResult.nextHearing?.date ? (
+                                                <Text style={styles.auditItemMissing}>• Next Hearing Date: Not specified</Text>
+                                            ) : null}
+                                        </View>
+                                    )}
+                                </View>
+                            </View>
+
+                            {/* Primary Import CTA */}
+                            <SmoothPressable
+                                style={styles.importActionBtn}
+                                onPress={handleImport}
+                                haptic="heavy"
+                                scaleTo={0.96}
+                            >
+                                <LinearGradient
+                                    colors={['#D4AF37', '#B8860B']}
+                                    start={{ x: 0, y: 0 }}
+                                    end={{ x: 1, y: 0 }}
+                                    style={styles.importActionGradient}
+                                >
+                                    <MaterialCommunityIcons name="download-box" size={18} color="#000000" />
+                                    <Text style={styles.importActionText}>Import & Save Case to Workspace</Text>
+                                </LinearGradient>
+                            </SmoothPressable>
+                        </View>
+                    )}
+                </ScrollView>
+            </SafeAreaView>
+        </Modal>
+    );
+};
+
+const createStyles = (colors: any, spacing: any, isDark: boolean) =>
+    StyleSheet.create({
         container: {
             flex: 1,
             backgroundColor: colors.background,
@@ -274,10 +876,10 @@ Year: 2020`;
             flexDirection: 'row',
             alignItems: 'center',
             justifyContent: 'space-between',
-            paddingHorizontal: spacing.m,
-            paddingVertical: spacing.s,
+            paddingHorizontal: 16,
+            paddingVertical: 14,
             borderBottomWidth: 1,
-            borderBottomColor: colors.border,
+            borderBottomColor: isDark ? 'rgba(255, 255, 255, 0.08)' : 'rgba(0, 0, 0, 0.06)',
             backgroundColor: colors.surface,
         },
         headerLeft: {
@@ -289,185 +891,336 @@ Year: 2020`;
             width: 36,
             height: 36,
             borderRadius: 10,
-            backgroundColor: colors.accent + '20',
+            backgroundColor: 'rgba(212, 175, 55, 0.15)',
             alignItems: 'center',
             justifyContent: 'center',
             borderWidth: 1,
-            borderColor: colors.accent + '40',
+            borderColor: 'rgba(212, 175, 55, 0.3)',
         },
         headerTitle: {
-            fontSize: 18,
+            fontSize: 16,
             fontWeight: '700',
             color: colors.textPrimary,
-            letterSpacing: -0.2,
+            letterSpacing: 0.1,
         },
         headerSubtitle: {
             fontSize: 11,
-            color: colors.accent,
-            fontWeight: '600',
-            textTransform: 'uppercase',
-            letterSpacing: 0.5,
+            color: colors.textSecondary,
+            marginTop: 1,
         },
         closeButton: {
-            padding: spacing.s,
-            borderRadius: 8,
-        },
-        content: {
-            padding: spacing.m,
-            paddingBottom: Math.max(insets.bottom, 24) + 60,
-        },
-        // 3-Way Tabs
-        tabContainer: {
-            flexDirection: 'row',
-            backgroundColor: colors.surfaceHighlight,
-            borderRadius: 12,
-            padding: 4,
-            marginBottom: spacing.m,
+            width: 34,
+            height: 34,
+            borderRadius: 17,
+            backgroundColor: isDark ? 'rgba(255, 255, 255, 0.08)' : 'rgba(0, 0, 0, 0.05)',
             borderWidth: 1,
-            borderColor: colors.border,
-        },
-        tabButton: {
-            flex: 1,
-            flexDirection: 'row',
+            borderColor: isDark ? 'rgba(255, 255, 255, 0.12)' : 'rgba(0, 0, 0, 0.08)',
             alignItems: 'center',
             justifyContent: 'center',
-            gap: 5,
-            paddingVertical: 9,
-            borderRadius: 8,
-        },
-        tabButtonActive: {
-            backgroundColor: colors.surface,
             shadowColor: '#000',
-            shadowOffset: { width: 0, height: 2 },
-            shadowOpacity: 0.1,
-            shadowRadius: 4,
+            shadowOffset: { width: 0, height: 1 },
+            shadowOpacity: 0.15,
+            shadowRadius: 2,
             elevation: 2,
         },
-        tabText: {
-            fontSize: 12,
-            color: colors.textTertiary,
-            fontWeight: '600',
+        content: {
+            padding: 16,
+            paddingBottom: 40,
         },
-        tabTextActive: {
-            color: colors.accent,
-            fontWeight: '700',
+        dropzoneCard: {
+            borderRadius: 18,
+            padding: 16,
+            backgroundColor: isDark ? '#141822' : '#FFFFFF',
+            borderWidth: 1.2,
+            borderColor: isDark ? 'rgba(212, 175, 55, 0.25)' : 'rgba(212, 175, 55, 0.2)',
+            shadowColor: '#000000',
+            shadowOffset: { width: 0, height: 6 },
+            shadowOpacity: 0.2,
+            shadowRadius: 12,
+            elevation: 5,
+            marginBottom: 16,
         },
-        // Form Card
-        formCard: {
-            backgroundColor: colors.surface,
-            borderRadius: 14,
-            padding: spacing.m,
-            borderWidth: 1,
-            borderColor: colors.border,
-            marginBottom: spacing.m,
-        },
-        fieldLabel: {
-            fontSize: 12,
-            fontWeight: '700',
-            color: colors.textSecondary,
-            marginBottom: 6,
-            textTransform: 'uppercase',
-            letterSpacing: 0.5,
-        },
-        textInput: {
-            backgroundColor: colors.surfaceHighlight,
-            borderRadius: 10,
-            paddingHorizontal: spacing.m,
-            paddingVertical: Platform.OS === 'ios' ? 12 : 10,
-            color: colors.textPrimary,
-            fontSize: 14,
-            borderWidth: 1,
-            borderColor: colors.border,
-            marginBottom: spacing.m,
-        },
-        textAreaInput: {
-            minHeight: 110,
-            textAlignVertical: 'top',
-            fontFamily: Platform.OS === 'ios' ? 'Courier' : 'monospace',
-            fontSize: 13,
-            lineHeight: 18,
-        },
-        cnrInput: {
-            fontFamily: Platform.OS === 'ios' ? 'Courier' : 'monospace',
-            letterSpacing: 1.5,
-            fontWeight: '700',
-            fontSize: 15,
-            color: colors.accent,
-        },
-        // Screenshot Upload Box
         uploadDropBox: {
-            borderWidth: 2,
-            borderColor: colors.accent + '50',
+            borderWidth: 1.5,
             borderStyle: 'dashed',
+            borderColor: isDark ? 'rgba(212, 175, 55, 0.45)' : 'rgba(212, 175, 55, 0.5)',
             borderRadius: 14,
-            backgroundColor: colors.accent + '08',
-            padding: spacing.l,
+            paddingVertical: 24,
+            paddingHorizontal: 16,
             alignItems: 'center',
             justifyContent: 'center',
-            marginBottom: spacing.m,
+            backgroundColor: isDark ? 'rgba(212, 175, 55, 0.03)' : '#FDFBF7',
+        },
+        uploadIconOuterRing: {
+            width: 62,
+            height: 62,
+            borderRadius: 31,
+            backgroundColor: isDark ? 'rgba(212, 175, 55, 0.08)' : 'rgba(212, 175, 55, 0.06)',
+            borderWidth: 1,
+            borderColor: 'rgba(212, 175, 55, 0.22)',
+            alignItems: 'center',
+            justifyContent: 'center',
+            marginBottom: 12,
         },
         uploadIconCircle: {
-            width: 56,
-            height: 56,
-            borderRadius: 28,
-            backgroundColor: colors.accent + '20',
+            width: 46,
+            height: 46,
+            borderRadius: 23,
+            backgroundColor: 'rgba(212, 175, 55, 0.16)',
             alignItems: 'center',
             justifyContent: 'center',
-            marginBottom: spacing.s,
-            borderWidth: 1,
-            borderColor: colors.accent + '40',
         },
         uploadTitle: {
-            fontSize: 15,
-            fontWeight: '700',
+            fontSize: 15.5,
+            fontWeight: '800',
             color: colors.textPrimary,
             marginBottom: 4,
+            textAlign: 'center',
+            letterSpacing: 0.1,
         },
         uploadSubtitle: {
             fontSize: 12,
-            color: colors.textTertiary,
+            color: colors.textSecondary,
             textAlign: 'center',
             lineHeight: 17,
+            paddingHorizontal: 8,
+            marginBottom: 14,
         },
-        imagePreviewContainer: {
-            borderRadius: 10,
-            overflow: 'hidden',
-            marginBottom: spacing.m,
-            borderWidth: 1,
-            borderColor: colors.border,
-            backgroundColor: colors.surfaceHighlight,
-            alignItems: 'center',
-            padding: spacing.s,
-        },
-        imagePreview: {
-            width: '100%',
-            height: 160,
-            borderRadius: 8,
-            resizeMode: 'contain',
-        },
-        actionRow: {
+        uploadFeaturesRow: {
             flexDirection: 'row',
-            gap: 10,
-            marginBottom: spacing.m,
-        },
-        secondaryActionBtn: {
-            flex: 1,
-            flexDirection: 'row',
+            flexWrap: 'wrap',
             alignItems: 'center',
             justifyContent: 'center',
             gap: 6,
-            backgroundColor: colors.surfaceHighlight,
-            borderColor: colors.border,
-            borderWidth: 1,
-            paddingVertical: 10,
-            borderRadius: 10,
         },
-        secondaryActionText: {
-            fontSize: 12,
-            fontWeight: '600',
-            color: colors.textPrimary,
+        uploadFeatureBadge: {
+            flexDirection: 'row',
+            alignItems: 'center',
+            gap: 4.5,
+            paddingHorizontal: 9,
+            paddingVertical: 4.5,
+            borderRadius: 20,
+            backgroundColor: isDark ? 'rgba(212, 175, 55, 0.1)' : 'rgba(212, 175, 55, 0.08)',
+            borderWidth: 1,
+            borderColor: 'rgba(212, 175, 55, 0.2)',
+        },
+        uploadFeatureBadgeText: {
+            fontSize: 10.5,
+            fontWeight: '700',
+            color: '#D4AF37',
+            letterSpacing: 0.2,
+        },
+        previewBox: {
+            borderRadius: 12,
+            overflow: 'hidden',
+            marginBottom: 12,
+            height: 160,
+            backgroundColor: '#000000',
+            position: 'relative',
+        },
+        imagePreview: {
+            width: '100%',
+            height: '100%',
+            resizeMode: 'cover',
+            opacity: 0.85,
+        },
+        previewTopGradient: {
+            position: 'absolute',
+            top: 0,
+            left: 0,
+            right: 0,
+            height: 54,
+            zIndex: 10,
+        },
+        previewTopBar: {
+            position: 'absolute',
+            top: 8,
+            left: 8,
+            right: 8,
+            flexDirection: 'row',
+            alignItems: 'center',
+            justifyContent: 'space-between',
+            zIndex: 15,
+        },
+        previewTagPill: {
+            flexDirection: 'row',
+            alignItems: 'center',
+            gap: 4.5,
+            backgroundColor: 'rgba(15, 18, 26, 0.94)',
+            paddingHorizontal: 8,
+            paddingVertical: 4,
+            borderRadius: 7,
+            borderWidth: 1.2,
+            borderColor: 'rgba(212, 175, 55, 0.6)',
+            shadowColor: '#000',
+            shadowOffset: { width: 0, height: 1 },
+            shadowOpacity: 0.3,
+            shadowRadius: 2,
+            elevation: 3,
+        },
+        previewTagText: {
+            color: '#FFFFFF',
+            fontSize: 10.5,
+            fontWeight: '800',
+        },
+        previewActionsRow: {
+            flexDirection: 'row',
+            alignItems: 'center',
+            gap: 5,
+        },
+        changeImageBtn: {
+            flexDirection: 'row',
+            alignItems: 'center',
+            gap: 4,
+            backgroundColor: 'rgba(15, 18, 26, 0.94)',
+            paddingHorizontal: 8,
+            paddingVertical: 4,
+            borderRadius: 7,
+            borderWidth: 1,
+            borderColor: 'rgba(255, 255, 255, 0.25)',
+            shadowColor: '#000',
+            shadowOffset: { width: 0, height: 1 },
+            shadowOpacity: 0.3,
+            shadowRadius: 2,
+            elevation: 3,
+        },
+        clearAllBtn: {
+            flexDirection: 'row',
+            alignItems: 'center',
+            gap: 4,
+            backgroundColor: '#DC2626',
+            paddingHorizontal: 8,
+            paddingVertical: 4,
+            borderRadius: 7,
+            borderWidth: 1,
+            borderColor: '#EF4444',
+            shadowColor: '#DC2626',
+            shadowOffset: { width: 0, height: 1 },
+            shadowOpacity: 0.4,
+            shadowRadius: 2,
+            elevation: 3,
+        },
+        changeImageText: {
+            color: '#FFFFFF',
+            fontSize: 10,
+            fontWeight: '700',
+        },
+        thumbnailsContainer: {
+            marginTop: 4,
+            marginBottom: 4,
+        },
+        thumbnailsHeaderRow: {
+            flexDirection: 'row',
+            justifyContent: 'space-between',
+            alignItems: 'center',
+            marginBottom: 8,
+            paddingHorizontal: 2,
+        },
+        thumbnailsTitle: {
+            color: isDark ? '#D4AF37' : '#92400E',
+            fontSize: 10.5,
+            fontWeight: '800',
+            letterSpacing: 0.5,
+        },
+        thumbnailsHint: {
+            color: isDark ? '#9CA3AF' : '#6B7280',
+            fontSize: 10,
+            fontWeight: '500',
+        },
+        thumbnailsScrollContent: {
+            gap: 10,
+            paddingVertical: 4,
+            paddingHorizontal: 2,
+        },
+        thumbnailWrapper: {
+            position: 'relative',
+            width: 62,
+            height: 80,
+            borderRadius: 12,
+            borderWidth: 1.5,
+            borderColor: isDark ? 'rgba(255,255,255,0.12)' : 'rgba(0,0,0,0.12)',
+            overflow: 'visible',
+        },
+        thumbnailWrapperActive: {
+            borderColor: '#D4AF37',
+            shadowColor: '#D4AF37',
+            shadowOffset: { width: 0, height: 2 },
+            shadowOpacity: 0.4,
+            shadowRadius: 5,
+            elevation: 4,
+        },
+        thumbnailPressable: {
+            width: '100%',
+            height: '100%',
+            borderRadius: 10,
+            overflow: 'hidden',
+            backgroundColor: isDark ? '#1C1F2B' : '#F3F4F6',
+        },
+        thumbnailImg: {
+            width: '100%',
+            height: '100%',
+            resizeMode: 'cover',
+        },
+        thumbnailPageBadge: {
+            position: 'absolute',
+            bottom: 3,
+            left: 3,
+            backgroundColor: 'rgba(0,0,0,0.75)',
+            paddingHorizontal: 5,
+            paddingVertical: 1.5,
+            borderRadius: 4,
+        },
+        thumbnailPageText: {
+            color: '#FFFFFF',
+            fontSize: 8.5,
+            fontWeight: '800',
+        },
+        thumbnailRemoveBtn: {
+            position: 'absolute',
+            top: -6,
+            right: -6,
+            width: 20,
+            height: 20,
+            borderRadius: 10,
+            backgroundColor: '#EF4444',
+            alignItems: 'center',
+            justifyContent: 'center',
+            shadowColor: '#000',
+            shadowOffset: { width: 0, height: 2 },
+            shadowOpacity: 0.3,
+            shadowRadius: 3,
+            elevation: 5,
+            borderWidth: 1.5,
+            borderColor: colors.surface,
+            zIndex: 20,
+        },
+        thumbnailAddBtn: {
+            width: 68,
+            height: 80,
+            borderRadius: 12,
+            borderWidth: 1.5,
+            borderStyle: 'dashed',
+            borderColor: 'rgba(212, 175, 55, 0.5)',
+            backgroundColor: isDark ? 'rgba(212, 175, 55, 0.06)' : 'rgba(212, 175, 55, 0.04)',
+            alignItems: 'center',
+            justifyContent: 'center',
+            gap: 4,
+            paddingHorizontal: 4,
+        },
+        thumbnailAddText: {
+            color: '#D4AF37',
+            fontSize: 8.5,
+            fontWeight: '700',
+            textAlign: 'center',
+        },
+        actionButtonsRow: {
+            flexDirection: 'row',
+            gap: 8,
+            marginTop: 12,
+            width: '100%',
         },
         primaryButton: {
+            flex: 1.15,
             borderRadius: 12,
             overflow: 'hidden',
         },
@@ -475,63 +1228,310 @@ Year: 2020`;
             flexDirection: 'row',
             alignItems: 'center',
             justifyContent: 'center',
-            gap: 8,
-            paddingVertical: 13,
+            gap: 6,
+            paddingVertical: 12,
+            paddingHorizontal: 6,
         },
         primaryButtonText: {
-            color: 'white',
-            fontSize: 15,
-            fontWeight: '700',
-            letterSpacing: 0.3,
+            color: '#000000',
+            fontSize: 12.5,
+            fontWeight: '800',
+            letterSpacing: 0.1,
+            flexShrink: 1,
         },
-        portalLinkRow: {
+        secondaryButton: {
+            flex: 1,
             flexDirection: 'row',
             alignItems: 'center',
             justifyContent: 'center',
             gap: 6,
-            marginTop: spacing.m,
-            paddingVertical: 4,
-        },
-        portalLinkText: {
-            fontSize: 12,
-            color: colors.textTertiary,
-            textDecorationLine: 'underline',
-        },
-        // Result Preview Card
-        resultCard: {
-            backgroundColor: colors.surface,
-            borderRadius: 16,
-            padding: spacing.m,
+            paddingVertical: 12,
+            paddingHorizontal: 6,
+            borderRadius: 12,
+            backgroundColor: isDark ? 'rgba(212, 175, 55, 0.12)' : 'rgba(212, 175, 55, 0.1)',
             borderWidth: 1.5,
-            borderColor: colors.safe + '60',
-            shadowColor: colors.safe,
-            shadowOffset: { width: 0, height: 4 },
-            shadowOpacity: 0.1,
-            shadowRadius: 10,
-            elevation: 4,
-            marginBottom: spacing.m,
+            borderColor: 'rgba(212, 175, 55, 0.4)',
         },
-        resultHeader: {
+        secondaryButtonText: {
+            color: '#D4AF37',
+            fontSize: 12.5,
+            fontWeight: '800',
+            letterSpacing: 0.1,
+            flexShrink: 1,
+        },
+        scannerLaserBeam: {
+            position: 'absolute',
+            top: 0,
+            left: 0,
+            right: 0,
+            height: 24,
+            zIndex: 10,
+        },
+        laserLine: {
+            width: '100%',
+            height: 3,
+            shadowColor: '#D4AF37',
+            shadowOffset: { width: 0, height: 0 },
+            shadowOpacity: 0.9,
+            shadowRadius: 6,
+            elevation: 8,
+        },
+        scanningHud: {
+            marginTop: 14,
+            padding: 14,
+            borderRadius: 14,
+            backgroundColor: isDark ? 'rgba(212, 175, 55, 0.07)' : '#FFFDF5',
+            borderWidth: 1.2,
+            borderColor: 'rgba(212, 175, 55, 0.3)',
+        },
+        hudHeader: {
+            flexDirection: 'row',
+            alignItems: 'center',
+            gap: 10,
+            marginBottom: 12,
+        },
+        hudBeaconIconBox: {
+            width: 32,
+            height: 32,
+            borderRadius: 8,
+            backgroundColor: 'rgba(212, 175, 55, 0.15)',
+            alignItems: 'center',
+            justifyContent: 'center',
+            borderWidth: 1,
+            borderColor: 'rgba(212, 175, 55, 0.3)',
+        },
+        hudTitle: {
+            fontSize: 13,
+            fontWeight: '800',
+            color: isDark ? '#FFFFFF' : '#1F2937',
+            letterSpacing: 0.1,
+        },
+        hudSubtext: {
+            fontSize: 10.5,
+            color: '#D4AF37',
+            fontWeight: '600',
+            marginTop: 1,
+        },
+        progressTrackBg: {
+            height: 4,
+            borderRadius: 2,
+            backgroundColor: isDark ? 'rgba(255, 255, 255, 0.08)' : 'rgba(0, 0, 0, 0.08)',
+            marginBottom: 12,
+            overflow: 'hidden',
+        },
+        progressTrackFill: {
+            height: '100%',
+            backgroundColor: '#D4AF37',
+            borderRadius: 2,
+        },
+        stepsRow: {
             flexDirection: 'row',
             alignItems: 'center',
             justifyContent: 'space-between',
-            borderBottomWidth: 1,
-            borderBottomColor: colors.border + '60',
-            paddingBottom: spacing.s,
-            marginBottom: spacing.m,
         },
-        resultCourtText: {
+        stepItem: {
+            flexDirection: 'row',
+            alignItems: 'center',
+            gap: 5,
+            opacity: 0.45,
+        },
+        stepActive: {
+            opacity: 1,
+        },
+        stepDotCircle: {
+            width: 18,
+            height: 18,
+            borderRadius: 9,
+            alignItems: 'center',
+            justifyContent: 'center',
+        },
+        stepDotCurrent: {
+            backgroundColor: '#D4AF37',
+        },
+        stepDotDone: {
+            backgroundColor: '#10B981',
+        },
+        stepDotPending: {
+            backgroundColor: isDark ? '#374151' : '#E5E7EB',
+        },
+        stepDotNum: {
+            fontSize: 9.5,
+            fontWeight: '800',
+            color: isDark ? '#9CA3AF' : '#6B7280',
+        },
+        stepText: {
+            fontSize: 10.5,
+            fontWeight: '600',
+            color: isDark ? '#9CA3AF' : '#6B7280',
+        },
+        stepTextActive: {
+            color: isDark ? '#FFFFFF' : '#111827',
+            fontWeight: '800',
+        },
+        stepConnector: {
+            flex: 1,
+            height: 1.5,
+            backgroundColor: isDark ? 'rgba(255, 255, 255, 0.1)' : 'rgba(0, 0, 0, 0.1)',
+            marginHorizontal: 4,
+        },
+        stepConnectorActive: {
+            backgroundColor: '#10B981',
+        },
+        errorCard: {
+            backgroundColor: isDark ? '#1C1618' : '#FFF5F5',
+            borderRadius: 16,
+            padding: 16,
+            borderWidth: 1.2,
+            borderColor: isDark ? 'rgba(248, 113, 113, 0.25)' : 'rgba(239, 68, 68, 0.25)',
+            marginBottom: 14,
+        },
+        errorHeader: {
+            flexDirection: 'row',
+            alignItems: 'center',
+            gap: 10,
+            marginBottom: 10,
+        },
+        errorIconBadge: {
+            width: 36,
+            height: 36,
+            borderRadius: 10,
+            backgroundColor: isDark ? 'rgba(239, 68, 68, 0.15)' : '#FEE2E2',
+            alignItems: 'center',
+            justifyContent: 'center',
+            borderWidth: 1,
+            borderColor: 'rgba(239, 68, 68, 0.3)',
+        },
+        errorTitle: {
+            fontSize: 14,
+            fontWeight: '800',
+            color: '#F87171',
+            letterSpacing: 0.1,
+        },
+        errorSubtitle: {
+            fontSize: 11,
+            color: isDark ? '#9CA3AF' : '#6B7280',
+            marginTop: 1,
+        },
+        errorBodyText: {
             fontSize: 12,
+            color: isDark ? '#D1D5DB' : '#374151',
+            lineHeight: 18,
+            marginBottom: 12,
+        },
+        supportedFormatsBox: {
+            backgroundColor: isDark ? 'rgba(0, 0, 0, 0.3)' : 'rgba(255, 255, 255, 0.8)',
+            borderRadius: 12,
+            padding: 10,
+            borderWidth: 1,
+            borderColor: isDark ? 'rgba(255, 255, 255, 0.06)' : 'rgba(0, 0, 0, 0.06)',
+            marginBottom: 14,
+        },
+        supportedFormatsHeader: {
+            fontSize: 10.5,
+            fontWeight: '800',
+            color: isDark ? '#9CA3AF' : '#6B7280',
+            textTransform: 'uppercase',
+            letterSpacing: 0.3,
+            marginBottom: 8,
+        },
+        formatPillsGrid: {
+            flexDirection: 'row',
+            flexWrap: 'wrap',
+            gap: 6,
+        },
+        formatPill: {
+            flexDirection: 'row',
+            alignItems: 'center',
+            gap: 5,
+            paddingHorizontal: 8,
+            paddingVertical: 5,
+            borderRadius: 6,
+            backgroundColor: isDark ? 'rgba(16, 185, 129, 0.1)' : '#ECFDF5',
+            borderWidth: 1,
+            borderColor: 'rgba(16, 185, 129, 0.2)',
+        },
+        formatPillText: {
+            fontSize: 10.5,
+            fontWeight: '600',
+            color: isDark ? '#A7F3D0' : '#065F46',
+        },
+        errorActionRow: {
+            flexDirection: 'row',
+            gap: 10,
+        },
+        errorPrimaryBtn: {
+            flex: 1.2,
+            borderRadius: 10,
+            overflow: 'hidden',
+        },
+        errorPrimaryGradient: {
+            flexDirection: 'row',
+            alignItems: 'center',
+            justifyContent: 'center',
+            gap: 6,
+            paddingVertical: 11,
+            paddingHorizontal: 8,
+        },
+        errorPrimaryText: {
+            color: '#000000',
+            fontSize: 12.5,
+            fontWeight: '800',
+        },
+        errorSecondaryBtn: {
+            flex: 1,
+            flexDirection: 'row',
+            alignItems: 'center',
+            justifyContent: 'center',
+            gap: 6,
+            paddingVertical: 11,
+            paddingHorizontal: 8,
+            borderRadius: 10,
+            backgroundColor: isDark ? 'rgba(212, 175, 55, 0.12)' : 'rgba(212, 175, 55, 0.08)',
+            borderWidth: 1.2,
+            borderColor: 'rgba(212, 175, 55, 0.4)',
+        },
+        errorSecondaryText: {
+            color: '#D4AF37',
+            fontSize: 12.5,
+            fontWeight: '800',
+        },
+        resultCard: {
+            backgroundColor: isDark ? '#181C26' : '#FFFFFF',
+            borderRadius: 16,
+            padding: 16,
+            borderWidth: 1.5,
+            borderColor: 'rgba(16, 185, 129, 0.4)',
+            marginBottom: 16,
+        },
+        resultTopBar: {
+            flexDirection: 'row',
+            alignItems: 'center',
+            justifyContent: 'space-between',
+            marginBottom: 10,
+        },
+        courtBadgePill: {
+            flexDirection: 'row',
+            alignItems: 'center',
+            gap: 5,
+            backgroundColor: 'rgba(212, 175, 55, 0.15)',
+            paddingHorizontal: 8,
+            paddingVertical: 3.5,
+            borderRadius: 6,
+            flex: 1,
+            marginRight: 8,
+        },
+        courtBadgeText: {
+            fontSize: 11,
             fontWeight: '700',
-            color: colors.accent,
+            color: '#D4AF37',
             flex: 1,
         },
-        liveBadge: {
+        liveVerifiedBadge: {
             flexDirection: 'row',
             alignItems: 'center',
             gap: 4,
-            backgroundColor: colors.safe + '20',
-            borderColor: colors.safe + '60',
+            backgroundColor: 'rgba(16, 185, 129, 0.15)',
+            borderColor: 'rgba(16, 185, 129, 0.4)',
             borderWidth: 1,
             paddingHorizontal: 8,
             paddingVertical: 3,
@@ -541,549 +1541,224 @@ Year: 2020`;
             width: 6,
             height: 6,
             borderRadius: 3,
-            backgroundColor: colors.safe,
+            backgroundColor: '#10B981',
         },
-        liveBadgeText: {
-            color: colors.safe,
+        liveVerifiedText: {
+            color: '#10B981',
             fontSize: 10,
-            fontWeight: '700',
-            letterSpacing: 0.5,
+            fontWeight: '800',
+            letterSpacing: 0.4,
         },
-        caseTitle: {
-            fontSize: 17,
+        caseTitleText: {
+            fontSize: 16,
             fontWeight: '700',
-            color: colors.textPrimary,
-            lineHeight: 23,
-            marginBottom: spacing.s,
+            color: isDark ? '#FFFFFF' : '#111827',
+            lineHeight: 22,
+            marginBottom: 10,
         },
-        badgeRow: {
+        quickBadgesRow: {
             flexDirection: 'row',
             flexWrap: 'wrap',
             gap: 6,
-            marginBottom: spacing.m,
+            marginBottom: 12,
         },
-        cnrBadge: {
+        cnrPill: {
+            flexDirection: 'row',
+            alignItems: 'center',
+            gap: 4,
             paddingHorizontal: 8,
             paddingVertical: 4,
             borderRadius: 6,
-            backgroundColor: colors.surfaceHighlight,
+            backgroundColor: isDark ? '#232836' : '#F3F4F6',
             borderWidth: 1,
-            borderColor: colors.border,
+            borderColor: isDark ? 'rgba(255,255,255,0.1)' : 'rgba(0,0,0,0.1)',
         },
-        cnrText: {
+        cnrPillLabel: {
+            fontSize: 9,
+            fontWeight: '800',
+            color: '#D4AF37',
+        },
+        cnrPillVal: {
             fontSize: 11,
-            color: colors.textSecondary,
             fontWeight: '700',
+            color: isDark ? '#E5E7EB' : '#374151',
             fontFamily: Platform.OS === 'ios' ? 'Courier' : 'monospace',
         },
-        nextHearingCard: {
-            backgroundColor: colors.warning + '12',
-            borderColor: colors.warning + '40',
+        caseNumPill: {
+            paddingHorizontal: 8,
+            paddingVertical: 4,
+            borderRadius: 6,
+            backgroundColor: 'rgba(212, 175, 55, 0.15)',
+            borderWidth: 1,
+            borderColor: 'rgba(212, 175, 55, 0.3)',
+        },
+        caseNumPillText: {
+            fontSize: 11,
+            color: '#D4AF37',
+            fontWeight: '700',
+        },
+        hearingInfoCard: {
+            backgroundColor: isDark ? 'rgba(245, 158, 11, 0.08)' : '#FFFBEB',
+            borderColor: 'rgba(245, 158, 11, 0.3)',
             borderWidth: 1,
             borderRadius: 10,
-            padding: spacing.s,
-            marginBottom: spacing.m,
+            padding: 10,
+            marginBottom: 12,
         },
-        nextHearingHeader: {
+        hearingHeaderRow: {
             flexDirection: 'row',
             alignItems: 'center',
             justifyContent: 'space-between',
-            marginBottom: 4,
+            marginBottom: 2,
         },
-        nextHearingLabel: {
+        hearingLabel: {
             fontSize: 11,
             fontWeight: '700',
-            color: colors.warning,
+            color: '#F59E0B',
             textTransform: 'uppercase',
-            letterSpacing: 0.5,
         },
-        nextHearingDate: {
-            fontSize: 14,
+        hearingDateText: {
+            fontSize: 13,
             fontWeight: '700',
-            color: colors.textPrimary,
+            color: isDark ? '#FFFFFF' : '#111827',
         },
-        nextHearingPurpose: {
-            fontSize: 12,
-            color: colors.textSecondary,
+        hearingPurposeText: {
+            fontSize: 11,
+            color: isDark ? '#9CA3AF' : '#6B7280',
             marginTop: 2,
         },
-        sectionBlock: {
-            marginBottom: spacing.m,
+        partiesCard: {
+            backgroundColor: isDark ? '#202430' : '#F9FAFB',
+            borderRadius: 10,
+            padding: 10,
+            marginBottom: 12,
+            borderWidth: 1,
+            borderColor: isDark ? 'rgba(255,255,255,0.06)' : 'rgba(0,0,0,0.06)',
         },
-        sectionBlockTitle: {
+        partyItemRow: {
+            flexDirection: 'row',
+            alignItems: 'flex-start',
+            gap: 10,
+        },
+        partyTag: {
+            fontSize: 10,
+            fontWeight: '800',
+            color: isDark ? '#9CA3AF' : '#6B7280',
+            width: 80,
+            marginTop: 1,
+        },
+        partyName: {
+            fontSize: 13,
+            fontWeight: '600',
+            color: isDark ? '#FFFFFF' : '#111827',
+        },
+        advocateName: {
             fontSize: 11,
+            color: '#D4AF37',
+            marginTop: 1,
+        },
+        partyDivider: {
+            height: 1,
+            backgroundColor: isDark ? 'rgba(255,255,255,0.06)' : 'rgba(0,0,0,0.06)',
+            marginVertical: 8,
+        },
+        sectionsContainer: {
+            marginBottom: 14,
+        },
+        sectionsHeader: {
+            fontSize: 10,
             fontWeight: '700',
-            color: colors.textTertiary,
+            color: isDark ? '#9CA3AF' : '#6B7280',
             textTransform: 'uppercase',
             letterSpacing: 0.5,
             marginBottom: 6,
         },
-        sectionsPills: {
+        sectionsChipsRow: {
             flexDirection: 'row',
             flexWrap: 'wrap',
             gap: 6,
         },
-        sectionChip: {
+        sectionChipPill: {
             flexDirection: 'row',
             alignItems: 'center',
             gap: 4,
-            backgroundColor: colors.accent + '15',
-            borderColor: colors.accent + '35',
+            backgroundColor: 'rgba(212, 175, 55, 0.12)',
+            borderColor: 'rgba(212, 175, 55, 0.3)',
             borderWidth: 1,
             paddingHorizontal: 8,
-            paddingVertical: 4,
+            paddingVertical: 3.5,
             borderRadius: 6,
         },
         sectionChipText: {
             fontSize: 11,
-            color: colors.accent,
+            color: '#D4AF37',
             fontWeight: '700',
         },
-        partiesContainer: {
-            backgroundColor: colors.surfaceHighlight + '60',
+        auditContainer: {
+            backgroundColor: isDark ? '#181C26' : '#F3F4F6',
             borderRadius: 10,
-            padding: spacing.s,
-            marginBottom: spacing.m,
-            gap: 8,
+            padding: 10,
+            marginBottom: 14,
+            borderWidth: 1,
+            borderColor: isDark ? 'rgba(212, 175, 55, 0.2)' : 'rgba(212, 175, 55, 0.3)',
         },
-        partyRow: {
+        auditHeaderRow: {
             flexDirection: 'row',
-            alignItems: 'flex-start',
-            gap: 8,
+            alignItems: 'center',
+            gap: 6,
+            marginBottom: 6,
         },
-        partyLabel: {
-            fontSize: 11,
+        auditHeaderText: {
+            fontSize: 10,
+            fontWeight: '800',
+            color: '#D4AF37',
+            letterSpacing: 0.8,
+        },
+        auditGrid: {
+            gap: 4,
+        },
+        auditSection: {
+            gap: 2,
+        },
+        auditDetectedTitle: {
+            fontSize: 10.5,
             fontWeight: '700',
-            color: colors.textTertiary,
-            width: 75,
-            textTransform: 'uppercase',
+            color: '#10B981',
+            marginBottom: 2,
         },
-        partyValue: {
-            flex: 1,
-            fontSize: 13,
-            color: colors.textPrimary,
-            fontWeight: '600',
+        auditItemDetected: {
+            fontSize: 11,
+            color: isDark ? '#E5E7EB' : '#374151',
+            lineHeight: 16,
+            paddingLeft: 4,
         },
-        importButton: {
+        auditMissingTitle: {
+            fontSize: 10.5,
+            fontWeight: '700',
+            color: '#F59E0B',
+            marginBottom: 2,
+        },
+        auditItemMissing: {
+            fontSize: 11,
+            color: isDark ? '#9CA3AF' : '#6B7280',
+            lineHeight: 16,
+            paddingLeft: 4,
+        },
+        importActionBtn: {
             borderRadius: 12,
             overflow: 'hidden',
-            marginTop: spacing.xs,
         },
-        importGradient: {
+        importActionGradient: {
             flexDirection: 'row',
             alignItems: 'center',
             justifyContent: 'center',
             gap: 8,
             paddingVertical: 14,
         },
-        importButtonText: {
-            color: 'white',
-            fontSize: 16,
-            fontWeight: '700',
-            letterSpacing: 0.3,
-        },
-        errorCard: {
-            flexDirection: 'row',
-            alignItems: 'center',
-            gap: 10,
-            backgroundColor: colors.critical + '15',
-            borderColor: colors.critical + '40',
-            borderWidth: 1,
-            padding: spacing.m,
-            borderRadius: 12,
-            marginBottom: spacing.m,
-        },
-        errorText: {
-            flex: 1,
-            color: colors.critical,
-            fontSize: 13,
-            lineHeight: 18,
+        importActionText: {
+            color: '#000000',
+            fontSize: 14,
+            fontWeight: '800',
+            letterSpacing: 0.2,
         },
     });
-
-    return (
-        <Modal
-            visible={visible}
-            animationType="slide"
-            presentationStyle="pageSheet"
-            onRequestClose={onClose}
-        >
-            <SafeAreaView style={styles.container} edges={['top']}>
-                {/* Header */}
-                <View style={styles.header}>
-                    <View style={styles.headerLeft}>
-                        <View style={styles.headerIconBox}>
-                            <MaterialCommunityIcons name="scale-balance" size={20} color={colors.accent} />
-                        </View>
-                        <View>
-                            <Text style={styles.headerTitle}>eCourts India Sync</Text>
-                            <Text style={styles.headerSubtitle}>Live High Court & District Court Sync</Text>
-                        </View>
-                    </View>
-                    <TouchableOpacity onPress={onClose} style={styles.closeButton}>
-                        <Ionicons name="close" size={24} color={colors.textSecondary} />
-                    </TouchableOpacity>
-                </View>
-
-                <ScrollView contentContainerStyle={styles.content} keyboardShouldPersistTaps="handled">
-                    {/* 3-Way Tab Selector */}
-                    <View style={styles.tabContainer}>
-                        <TouchableOpacity
-                            style={[styles.tabButton, activeTab === 'SCREENSHOT' && styles.tabButtonActive]}
-                            onPress={() => {
-                                setActiveTab('SCREENSHOT');
-                                setErrorMsg(null);
-                            }}
-                        >
-                            <MaterialCommunityIcons
-                                name="camera-outline"
-                                size={16}
-                                color={activeTab === 'SCREENSHOT' ? colors.accent : colors.textTertiary}
-                            />
-                            <Text style={[styles.tabText, activeTab === 'SCREENSHOT' && styles.tabTextActive]}>
-                                Screenshot
-                            </Text>
-                        </TouchableOpacity>
-
-                        <TouchableOpacity
-                            style={[styles.tabButton, activeTab === 'PASTE' && styles.tabButtonActive]}
-                            onPress={() => {
-                                setActiveTab('PASTE');
-                                setErrorMsg(null);
-                            }}
-                        >
-                            <MaterialCommunityIcons
-                                name="clipboard-text-outline"
-                                size={16}
-                                color={activeTab === 'PASTE' ? colors.accent : colors.textTertiary}
-                            />
-                            <Text style={[styles.tabText, activeTab === 'PASTE' && styles.tabTextActive]}>
-                                Quick Paste
-                            </Text>
-                        </TouchableOpacity>
-
-                        <TouchableOpacity
-                            style={[styles.tabButton, activeTab === 'CNR' && styles.tabButtonActive]}
-                            onPress={() => {
-                                setActiveTab('CNR');
-                                setErrorMsg(null);
-                            }}
-                        >
-                            <MaterialCommunityIcons
-                                name="barcode-scan"
-                                size={16}
-                                color={activeTab === 'CNR' ? colors.accent : colors.textTertiary}
-                            />
-                            <Text style={[styles.tabText, activeTab === 'CNR' && styles.tabTextActive]}>
-                                CNR Search
-                            </Text>
-                        </TouchableOpacity>
-                    </View>
-
-                    {/* TAB 1: SCREENSHOT UPLOAD */}
-                    {activeTab === 'SCREENSHOT' && (
-                        <View style={styles.formCard}>
-                            <TouchableOpacity
-                                style={styles.uploadDropBox}
-                                onPress={handlePickScreenshot}
-                                activeOpacity={0.8}
-                            >
-                                <View style={styles.uploadIconCircle}>
-                                    <MaterialCommunityIcons name="image-plus" size={26} color={colors.accent} />
-                                </View>
-                                <Text style={styles.uploadTitle}>
-                                    {selectedImageUri ? 'Change Screenshot' : 'Upload eCourts Screenshot'}
-                                </Text>
-                                <Text style={styles.uploadSubtitle}>
-                                    Take a screenshot of the official eCourts app, High Court site, or WhatsApp message
-                                </Text>
-                            </TouchableOpacity>
-
-                            {selectedImageUri && (
-                                <View style={styles.imagePreviewContainer}>
-                                    <Image source={{ uri: selectedImageUri }} style={styles.imagePreview} />
-                                </View>
-                            )}
-
-                            <TouchableOpacity
-                                style={styles.primaryButton}
-                                onPress={() => {
-                                    if (selectedImageBase64) {
-                                        processScreenshot(selectedImageBase64);
-                                    } else {
-                                        handlePickScreenshot();
-                                    }
-                                }}
-                                disabled={loading}
-                                activeOpacity={0.85}
-                            >
-                                <LinearGradient
-                                    colors={[colors.primary, colors.accent]}
-                                    style={styles.primaryGradient}
-                                >
-                                    {loading ? (
-                                        <>
-                                            <ActivityIndicator size="small" color="white" />
-                                            <Text style={styles.primaryButtonText}>{loadingMsg}</Text>
-                                        </>
-                                    ) : (
-                                        <>
-                                            <MaterialCommunityIcons name="scan-helper" size={18} color="white" />
-                                            <Text style={styles.primaryButtonText}>
-                                                {selectedImageUri ? 'Scan & Extract Details' : 'Select Screenshot from Gallery'}
-                                            </Text>
-                                        </>
-                                    )}
-                                </LinearGradient>
-                            </TouchableOpacity>
-                        </View>
-                    )}
-
-                    {/* TAB 2: SMART QUICK-PASTE */}
-                    {activeTab === 'PASTE' && (
-                        <View style={styles.formCard}>
-                            <Text style={styles.fieldLabel}>Paste eCourts Text / SMS / Cause List</Text>
-                            <TextInput
-                                style={[styles.textInput, styles.textAreaInput]}
-                                placeholder="Paste copied text from eCourts app, SMS alert, or WhatsApp message here..."
-                                placeholderTextColor={colors.textTertiary}
-                                value={pasteText}
-                                onChangeText={setPasteText}
-                                multiline
-                                numberOfLines={5}
-                            />
-
-                            <View style={styles.actionRow}>
-                                <TouchableOpacity
-                                    style={styles.secondaryActionBtn}
-                                    onPress={handlePasteFromClipboard}
-                                >
-                                    <Ionicons name="clipboard-outline" size={16} color={colors.accent} />
-                                    <Text style={[styles.secondaryActionText, { color: colors.accent }]}>
-                                        Paste from Clipboard
-                                    </Text>
-                                </TouchableOpacity>
-
-                                <TouchableOpacity
-                                    style={styles.secondaryActionBtn}
-                                    onPress={loadSampleText}
-                                >
-                                    <MaterialCommunityIcons name="text-box-search-outline" size={16} color={colors.textSecondary} />
-                                    <Text style={styles.secondaryActionText}>Load Sample</Text>
-                                </TouchableOpacity>
-                            </View>
-
-                            <TouchableOpacity
-                                style={styles.primaryButton}
-                                onPress={() => handleParseText()}
-                                disabled={loading || !pasteText.trim()}
-                                activeOpacity={0.85}
-                            >
-                                <LinearGradient
-                                    colors={[colors.primary, colors.accent]}
-                                    style={styles.primaryGradient}
-                                >
-                                    {loading ? (
-                                        <ActivityIndicator size="small" color="white" />
-                                    ) : (
-                                        <>
-                                            <MaterialCommunityIcons name="auto-fix" size={18} color="white" />
-                                            <Text style={styles.primaryButtonText}>Parse & Extract Details</Text>
-                                        </>
-                                    )}
-                                </LinearGradient>
-                            </TouchableOpacity>
-                        </View>
-                    )}
-
-                    {/* TAB 3: CNR SEARCH & OFFICIAL PORTAL */}
-                    {activeTab === 'CNR' && (
-                        <View style={styles.formCard}>
-                            <Text style={styles.fieldLabel}>16-Character CNR Number</Text>
-                            <TextInput
-                                style={[styles.textInput, styles.cnrInput]}
-                                placeholder="e.g. TNHC010018292026"
-                                placeholderTextColor={colors.textTertiary}
-                                value={cnrInput}
-                                onChangeText={setCnrInput}
-                                autoCapitalize="characters"
-                                maxLength={19}
-                            />
-
-                            <TouchableOpacity
-                                style={styles.primaryButton}
-                                onPress={handleSearchCNR}
-                                disabled={loading}
-                                activeOpacity={0.85}
-                            >
-                                <LinearGradient
-                                    colors={[colors.primary, colors.accent]}
-                                    style={styles.primaryGradient}
-                                >
-                                    {loading ? (
-                                        <ActivityIndicator size="small" color="white" />
-                                    ) : (
-                                        <>
-                                            <Ionicons name="search" size={18} color="white" />
-                                            <Text style={styles.primaryButtonText}>Search CNR Registry</Text>
-                                        </>
-                                    )}
-                                </LinearGradient>
-                            </TouchableOpacity>
-
-                            <TouchableOpacity style={styles.portalLinkRow} onPress={openOfficialPortal}>
-                                <Ionicons name="open-outline" size={14} color={colors.textTertiary} />
-                                <Text style={styles.portalLinkText}>
-                                    Open Official eCourts Services Portal (NIC)
-                                </Text>
-                            </TouchableOpacity>
-                        </View>
-                    )}
-
-                    {/* Error Banner & Guidance */}
-                    {errorMsg && (
-                        <View style={styles.errorCard}>
-                            <Ionicons name="information-circle-outline" size={24} color={colors.warning} />
-                            <View style={{ flex: 1 }}>
-                                <Text style={[styles.errorText, { color: colors.textPrimary }]}>{errorMsg}</Text>
-                                <View style={{ flexDirection: 'row', gap: 8, marginTop: 10 }}>
-                                    <TouchableOpacity
-                                        style={{
-                                            backgroundColor: colors.accent,
-                                            paddingHorizontal: 12,
-                                            paddingVertical: 7,
-                                            borderRadius: 8,
-                                        }}
-                                        onPress={() => {
-                                            setErrorMsg(null);
-                                            setActiveTab('PASTE');
-                                        }}
-                                    >
-                                        <Text style={{ color: 'white', fontWeight: '700', fontSize: 12 }}>
-                                            📋 Go to Quick Paste Tab
-                                        </Text>
-                                    </TouchableOpacity>
-                                    <TouchableOpacity
-                                        style={{
-                                            backgroundColor: colors.surfaceHighlight,
-                                            borderColor: colors.border,
-                                            borderWidth: 1,
-                                            paddingHorizontal: 10,
-                                            paddingVertical: 7,
-                                            borderRadius: 8,
-                                        }}
-                                        onPress={openOfficialPortal}
-                                    >
-                                        <Text style={{ color: colors.textSecondary, fontWeight: '600', fontSize: 12 }}>
-                                            🌐 Open Portal
-                                        </Text>
-                                    </TouchableOpacity>
-                                </View>
-                            </View>
-                        </View>
-                    )}
-
-                    {/* Result Preview Card */}
-                    {searchResult && (
-                        <View style={styles.resultCard}>
-                            <View style={styles.resultHeader}>
-                                <Text style={styles.resultCourtText} numberOfLines={1}>
-                                    {searchResult.courtName}
-                                </Text>
-                                <View style={styles.liveBadge}>
-                                    <View style={styles.liveDot} />
-                                    <Text style={styles.liveBadgeText}>VERIFIED ECOURTS RECORD</Text>
-                                </View>
-                            </View>
-
-                            <Text style={styles.caseTitle}>{searchResult.caseTitle}</Text>
-
-                            <View style={styles.badgeRow}>
-                                <View style={styles.cnrBadge}>
-                                    <Text style={styles.cnrText}>CNR: {formatCNRDisplay(searchResult.cnr)}</Text>
-                                </View>
-                                <View style={[styles.cnrBadge, { borderColor: colors.accent + '50' }]}>
-                                    <Text style={[styles.cnrText, { color: colors.accent }]}>
-                                        {searchResult.caseNumber}
-                                    </Text>
-                                </View>
-                            </View>
-
-                            {/* Next Hearing Countdown */}
-                            {searchResult.nextHearing && (
-                                <View style={styles.nextHearingCard}>
-                                    <View style={styles.nextHearingHeader}>
-                                        <Text style={styles.nextHearingLabel}>Next Listed Hearing</Text>
-                                        <Text style={styles.nextHearingDate}>
-                                            {dayjs(searchResult.nextHearing.date).format('DD MMMM YYYY')}
-                                        </Text>
-                                    </View>
-                                    <Text style={styles.nextHearingPurpose}>
-                                        Purpose: {searchResult.nextHearing.purpose}
-                                        {searchResult.nextHearing.courtHall ? ` • ${searchResult.nextHearing.courtHall}` : ''}
-                                    </Text>
-                                </View>
-                            )}
-
-                            {/* Parties Info */}
-                            <View style={styles.partiesContainer}>
-                                <View style={styles.partyRow}>
-                                    <Text style={styles.partyLabel}>Petitioner:</Text>
-                                    <Text style={styles.partyValue} numberOfLines={2}>
-                                        {searchResult.petitioner.name}
-                                    </Text>
-                                </View>
-                                <View style={styles.partyRow}>
-                                    <Text style={styles.partyLabel}>Respondent:</Text>
-                                    <Text style={styles.partyValue} numberOfLines={2}>
-                                        {searchResult.respondent.name}
-                                    </Text>
-                                </View>
-                                {searchResult.presidingJudge && (
-                                    <View style={styles.partyRow}>
-                                        <Text style={styles.partyLabel}>Bench:</Text>
-                                        <Text style={styles.partyValue} numberOfLines={1}>
-                                            {searchResult.presidingJudge}
-                                        </Text>
-                                    </View>
-                                )}
-                            </View>
-
-                            {/* Statutory Sections */}
-                            {searchResult.sections && searchResult.sections.length > 0 && (
-                                <View style={styles.sectionBlock}>
-                                    <Text style={styles.sectionBlockTitle}>Statutory Acts & Sections</Text>
-                                    <View style={styles.sectionsPills}>
-                                        {searchResult.sections.map((s, idx) => (
-                                            <View key={idx} style={styles.sectionChip}>
-                                                <MaterialCommunityIcons name="scale" size={12} color={colors.accent} />
-                                                <Text style={styles.sectionChipText}>
-                                                    {s.act} Sec {s.section}
-                                                </Text>
-                                            </View>
-                                        ))}
-                                    </View>
-                                </View>
-                            )}
-
-                            {/* Import Button */}
-                            <TouchableOpacity
-                                style={styles.importButton}
-                                onPress={handleImport}
-                                activeOpacity={0.85}
-                            >
-                                <LinearGradient
-                                    colors={[colors.safe, '#15803d']}
-                                    style={styles.importGradient}
-                                >
-                                    <Ionicons name="download-outline" size={20} color="white" />
-                                    <Text style={styles.importButtonText}>Import to My Practice</Text>
-                                </LinearGradient>
-                            </TouchableOpacity>
-                        </View>
-                    )}
-                </ScrollView>
-            </SafeAreaView>
-        </Modal>
-    );
-};
