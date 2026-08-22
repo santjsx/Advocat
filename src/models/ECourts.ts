@@ -51,6 +51,7 @@ export interface ECourtsCaseResult {
         name: string;
         advocate?: string;
         address?: string;
+        phone?: string;
     };
     caseCategory: CaseType;
     stage: CaseStage;

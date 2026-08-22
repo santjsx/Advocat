@@ -51,9 +51,6 @@ export const ImageToPdfScreen: React.FC<Props> = ({ navigation, route }) => {
     const [pageOrientation, setPageOrientation] = useState<'PORTRAIT' | 'LANDSCAPE'>('PORTRAIT');
     const [marginStyle, setMarginStyle] = useState<'COURT' | 'COMPACT' | 'ZERO'>('COURT');
     const [includePageNumbers, setIncludePageNumbers] = useState(true);
-    const [includeHeader, setIncludeHeader] = useState(true);
-    const [headerText, setHeaderText] = useState('IN THE HIGH COURT OF JUDICATURE AT MADRAS');
-    const [annexureLabel, setAnnexureLabel] = useState('ANNEXURE - P');
 
     // Conversion progress & result state
     const [isConverting, setIsConverting] = useState(false);
@@ -251,9 +248,7 @@ export const ImageToPdfScreen: React.FC<Props> = ({ navigation, route }) => {
                 pageOrientation,
                 marginStyle,
                 includePageNumbers,
-                includeHeader,
-                headerText: headerText.trim(),
-                annexureLabel: annexureLabel.trim(),
+                includeHeader: false,
             };
 
             const result = await convertImagesToPdf(images, options, (p) => {
@@ -660,41 +655,6 @@ export const ImageToPdfScreen: React.FC<Props> = ({ navigation, route }) => {
                             thumbColor="#FFFFFF"
                         />
                     </View>
-
-                    <View style={styles.toggleRow}>
-                        <View style={{ flex: 1 }}>
-                            <Text style={styles.toggleLabel}>Court Header & Annexure Tag</Text>
-                            <Text style={styles.toggleSub}>Adds top banner & annexure reference</Text>
-                        </View>
-                        <Switch
-                            value={includeHeader}
-                            onValueChange={setIncludeHeader}
-                            trackColor={{ false: colors.border, true: '#D4AF37' }}
-                            thumbColor="#FFFFFF"
-                        />
-                    </View>
-
-                    {includeHeader && (
-                        <View style={styles.headerInputsBox}>
-                            <Text style={styles.inputLabel}>Annexure Label</Text>
-                            <TextInput
-                                style={styles.textInput}
-                                value={annexureLabel}
-                                onChangeText={setAnnexureLabel}
-                                placeholder="e.g. ANNEXURE - P1"
-                                placeholderTextColor={colors.textTertiary}
-                            />
-
-                            <Text style={styles.inputLabel}>Court Header Title</Text>
-                            <TextInput
-                                style={styles.textInput}
-                                value={headerText}
-                                onChangeText={setHeaderText}
-                                placeholder="IN THE HIGH COURT OF JUDICATURE AT MADRAS"
-                                placeholderTextColor={colors.textTertiary}
-                            />
-                        </View>
-                    )}
                 </View>
             </ScrollView>
 

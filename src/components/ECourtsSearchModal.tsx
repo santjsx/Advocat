@@ -1,4 +1,3 @@
-// eCourts India & Case Screenshot AI Importer Modal - UI/UX Pro Max Edition
 import React, { useState } from 'react';
 import {
     View,
@@ -11,6 +10,7 @@ import {
     Image,
     Platform,
     Animated,
+    TextInput,
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { Ionicons, MaterialCommunityIcons } from '@expo/vector-icons';
@@ -19,7 +19,7 @@ import * as Haptics from 'expo-haptics';
 import { useTheme } from '../theme/ThemeContext';
 import { useAppStore } from '../store/useAppStore';
 import { ECourtsCaseResult } from '../models/ECourts';
-import { convertECourtsToAdvocatCase } from '../services/eCourtsService';
+import { convertECourtsToAdvocatCase, ECourtsClientSide } from '../services/eCourtsService';
 import {
     pickECourtsScreenshots,
     captureECourtsPhoto,
@@ -58,6 +58,12 @@ export const ECourtsSearchModal: React.FC<Props> = ({
     const [loadingMsg, setLoadingMsg] = useState('Extracting court details...');
     const [searchResult, setSearchResult] = useState<ECourtsCaseResult | null>(null);
     const [errorMsg, setErrorMsg] = useState<string | null>(null);
+
+    // Client Representation State (Who does the advocate represent?)
+    const [clientSide, setClientSide] = useState<ECourtsClientSide>('PETITIONER');
+    const [customClientName, setCustomClientName] = useState<string>('');
+    const [customClientPhone, setCustomClientPhone] = useState<string>('');
+    const [showCustomInput, setShowCustomInput] = useState<boolean>(false);
 
     // Animations
     const scanLineAnim = React.useRef(new Animated.Value(0)).current;
@@ -122,6 +128,10 @@ export const ECourtsSearchModal: React.FC<Props> = ({
         setErrorMsg(null);
         setLoading(false);
         setScanStep('IDLE');
+        setClientSide('PETITIONER');
+        setCustomClientName('');
+        setCustomClientPhone('');
+        setShowCustomInput(false);
     };
 
     // Handle Screenshot Selection from Gallery (1 to 5 total)
@@ -178,6 +188,10 @@ export const ECourtsSearchModal: React.FC<Props> = ({
         setScanStep('IDLE');
         setSearchResult(null);
         setErrorMsg(null);
+        setClientSide('PETITIONER');
+        setCustomClientName('');
+        setCustomClientPhone('');
+        setShowCustomInput(false);
 
         if (updated.length === 0) {
             handleReset();
@@ -220,6 +234,28 @@ export const ECourtsSearchModal: React.FC<Props> = ({
                 setSearchResult(res.data);
                 setScanStep('SUCCESS');
                 setActivePreviewIndex(0);
+
+                // Auto-suggest client side based on advocate profile or criminal state prosecution
+                const myName = (advocateProfile?.name || '').toLowerCase().trim();
+                const respAdv = (res.data.respondent?.advocate || '').toLowerCase();
+                const petAdv = (res.data.petitioner?.advocate || '').toLowerCase();
+
+                if (myName.length > 2 && respAdv.includes(myName)) {
+                    setClientSide('RESPONDENT');
+                } else if (myName.length > 2 && petAdv.includes(myName)) {
+                    setClientSide('PETITIONER');
+                } else {
+                    const isStatePetitioner = /state|police|inspector|station|union of india|prosecution|complainant/i.test(res.data.petitioner?.name || '');
+                    if (isStatePetitioner && res.data.respondent?.name) {
+                        setClientSide('RESPONDENT');
+                    } else {
+                        setClientSide('PETITIONER');
+                    }
+                }
+                setShowCustomInput(false);
+                setCustomClientName('');
+                setCustomClientPhone('');
+
                 Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
             } else {
                 Haptics.notificationAsync(Haptics.NotificationFeedbackType.Error);
@@ -239,13 +275,19 @@ export const ECourtsSearchModal: React.FC<Props> = ({
         }
     };
 
-    // Import extracted case into Advocat store
+    // Import extracted case into Advocat store with explicit client representation
     const handleImport = () => {
         if (!searchResult) return;
 
         Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Heavy);
 
-        const { newCase, deadline } = convertECourtsToAdvocatCase(searchResult);
+        const { newCase, deadline } = convertECourtsToAdvocatCase(
+            searchResult,
+            clientSide,
+            clientSide === 'CUSTOM'
+                ? { name: customClientName, phone: customClientPhone }
+                : undefined
+        );
 
         addCase(newCase);
 
@@ -744,33 +786,177 @@ export const ECourtsSearchModal: React.FC<Props> = ({
                                 </View>
                             )}
 
-                            {/* Parties Card */}
-                            <View style={styles.partiesCard}>
-                                {searchResult.petitioner?.name ? (
-                                    <View style={styles.partyItemRow}>
-                                        <Text style={styles.partyTag}>PETITIONER</Text>
+                            {/* Who is your Client? Interactive Representation Selector */}
+                            <View style={styles.clientSelectionSection}>
+                                <View style={styles.clientSelectionHeader}>
+                                    <View style={styles.clientSelectionIconBox}>
+                                        <MaterialCommunityIcons name="account-tie" size={18} color="#D4AF37" />
+                                    </View>
+                                    <View style={{ flex: 1 }}>
+                                        <Text style={styles.clientSelectionTitle}>Who is your Client?</Text>
+                                        <Text style={styles.clientSelectionSubtitle}>
+                                            Select which party your chamber represents in this case
+                                        </Text>
+                                    </View>
+                                </View>
+
+                                <View style={styles.clientOptionsContainer}>
+                                    {/* OPTION A: Petitioner / Complainant / Victim */}
+                                    <SmoothPressable
+                                        style={[
+                                            styles.clientOptionCard,
+                                            clientSide === 'PETITIONER' && styles.clientOptionCardActive,
+                                        ]}
+                                        onPress={() => {
+                                            Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
+                                            setClientSide('PETITIONER');
+                                            setShowCustomInput(false);
+                                        }}
+                                        haptic="light"
+                                        scaleTo={0.98}
+                                    >
+                                        <View style={styles.clientOptionRadio}>
+                                            <Ionicons
+                                                name={clientSide === 'PETITIONER' ? 'radio-button-on' : 'radio-button-off'}
+                                                size={20}
+                                                color={clientSide === 'PETITIONER' ? '#D4AF37' : colors.textTertiary}
+                                            />
+                                        </View>
                                         <View style={{ flex: 1 }}>
-                                            <Text style={styles.partyName}>{searchResult.petitioner.name}</Text>
-                                            {searchResult.petitioner.advocate ? (
-                                                <Text style={styles.advocateName}>Adv. {searchResult.petitioner.advocate}</Text>
+                                            <View style={styles.clientOptionBadgeRow}>
+                                                <View style={[styles.clientSideBadge, clientSide === 'PETITIONER' && styles.clientSideBadgeActive]}>
+                                                    <Text style={[styles.clientSideBadgeText, clientSide === 'PETITIONER' && styles.clientSideBadgeTextActive]}>
+                                                        {searchResult.caseCategory === 'CRIMINAL' ? 'PETITIONER / VICTIM' : 'PETITIONER / PLAINTIFF'}
+                                                    </Text>
+                                                </View>
+                                                {clientSide === 'PETITIONER' && (
+                                                    <View style={styles.representingBadge}>
+                                                        <MaterialCommunityIcons name="check-decagram" size={12} color="#D4AF37" />
+                                                        <Text style={styles.representingBadgeText}>MY CLIENT</Text>
+                                                    </View>
+                                                )}
+                                            </View>
+                                            <Text style={styles.clientOptionName} numberOfLines={2}>
+                                                {searchResult.petitioner?.name || 'Petitioner'}
+                                            </Text>
+                                            {searchResult.petitioner?.advocate ? (
+                                                <Text style={styles.clientOptionAdvocate} numberOfLines={1}>
+                                                    Adv. on Record: {searchResult.petitioner.advocate}
+                                                </Text>
                                             ) : null}
                                         </View>
-                                    </View>
-                                ) : null}
+                                    </SmoothPressable>
 
-                                <View style={styles.partyDivider} />
-
-                                {searchResult.respondent?.name ? (
-                                    <View style={styles.partyItemRow}>
-                                        <Text style={styles.partyTag}>RESPONDENT</Text>
+                                    {/* OPTION B: Respondent / Accused / Defendant */}
+                                    <SmoothPressable
+                                        style={[
+                                            styles.clientOptionCard,
+                                            clientSide === 'RESPONDENT' && styles.clientOptionCardActive,
+                                        ]}
+                                        onPress={() => {
+                                            Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
+                                            setClientSide('RESPONDENT');
+                                            setShowCustomInput(false);
+                                        }}
+                                        haptic="light"
+                                        scaleTo={0.98}
+                                    >
+                                        <View style={styles.clientOptionRadio}>
+                                            <Ionicons
+                                                name={clientSide === 'RESPONDENT' ? 'radio-button-on' : 'radio-button-off'}
+                                                size={20}
+                                                color={clientSide === 'RESPONDENT' ? '#D4AF37' : colors.textTertiary}
+                                            />
+                                        </View>
                                         <View style={{ flex: 1 }}>
-                                            <Text style={styles.partyName}>{searchResult.respondent.name}</Text>
-                                            {searchResult.respondent.advocate ? (
-                                                <Text style={styles.advocateName}>Adv. {searchResult.respondent.advocate}</Text>
+                                            <View style={styles.clientOptionBadgeRow}>
+                                                <View style={[styles.clientSideBadge, clientSide === 'RESPONDENT' && styles.clientSideBadgeActive]}>
+                                                    <Text style={[styles.clientSideBadgeText, clientSide === 'RESPONDENT' && styles.clientSideBadgeTextActive]}>
+                                                        {searchResult.caseCategory === 'CRIMINAL' ? 'ACCUSED / RESPONDENT' : 'DEFENDANT / RESPONDENT'}
+                                                    </Text>
+                                                </View>
+                                                {clientSide === 'RESPONDENT' && (
+                                                    <View style={styles.representingBadge}>
+                                                        <MaterialCommunityIcons name="check-decagram" size={12} color="#D4AF37" />
+                                                        <Text style={styles.representingBadgeText}>MY CLIENT</Text>
+                                                    </View>
+                                                )}
+                                            </View>
+                                            <Text style={styles.clientOptionName} numberOfLines={2}>
+                                                {searchResult.respondent?.name || 'Respondent'}
+                                            </Text>
+                                            {searchResult.respondent?.advocate ? (
+                                                <Text style={styles.clientOptionAdvocate} numberOfLines={1}>
+                                                    Adv. on Record: {searchResult.respondent.advocate}
+                                                </Text>
                                             ) : null}
                                         </View>
-                                    </View>
-                                ) : null}
+                                    </SmoothPressable>
+
+                                    {/* OPTION C: Specific Client Name / Co-Accused */}
+                                    <SmoothPressable
+                                        style={[
+                                            styles.clientOptionCard,
+                                            clientSide === 'CUSTOM' && styles.clientOptionCardActive,
+                                        ]}
+                                        onPress={() => {
+                                            Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
+                                            setClientSide('CUSTOM');
+                                            setShowCustomInput(true);
+                                        }}
+                                        haptic="light"
+                                        scaleTo={0.98}
+                                    >
+                                        <View style={styles.clientOptionRadio}>
+                                            <Ionicons
+                                                name={clientSide === 'CUSTOM' ? 'radio-button-on' : 'radio-button-off'}
+                                                size={20}
+                                                color={clientSide === 'CUSTOM' ? '#D4AF37' : colors.textTertiary}
+                                            />
+                                        </View>
+                                        <View style={{ flex: 1 }}>
+                                            <View style={styles.clientOptionBadgeRow}>
+                                                <View style={[styles.clientSideBadge, clientSide === 'CUSTOM' && styles.clientSideBadgeActive]}>
+                                                    <Text style={[styles.clientSideBadgeText, clientSide === 'CUSTOM' && styles.clientSideBadgeTextActive]}>
+                                                        SPECIFIC CLIENT / CO-ACCUSED
+                                                    </Text>
+                                                </View>
+                                                {clientSide === 'CUSTOM' && (
+                                                    <View style={styles.representingBadge}>
+                                                        <MaterialCommunityIcons name="check-decagram" size={12} color="#D4AF37" />
+                                                        <Text style={styles.representingBadgeText}>MY CLIENT</Text>
+                                                    </View>
+                                                )}
+                                            </View>
+                                            <Text style={styles.clientOptionName}>
+                                                {customClientName.trim() ? customClientName : 'Enter specific client or co-accused name...'}
+                                            </Text>
+                                        </View>
+                                    </SmoothPressable>
+
+                                    {/* Custom Input Fields when CUSTOM is active */}
+                                    {clientSide === 'CUSTOM' && (
+                                        <View style={styles.customClientInputBox}>
+                                            <Text style={styles.customInputLabel}>Client Full Name *</Text>
+                                            <TextInput
+                                                style={styles.customInput}
+                                                placeholder="e.g., A-2 Rajesh Kumar / Intervenor"
+                                                placeholderTextColor={colors.textTertiary}
+                                                value={customClientName}
+                                                onChangeText={setCustomClientName}
+                                            />
+                                            <Text style={styles.customInputLabel}>Client Contact Number (Optional)</Text>
+                                            <TextInput
+                                                style={styles.customInput}
+                                                placeholder="e.g., +91 98765 43210"
+                                                placeholderTextColor={colors.textTertiary}
+                                                value={customClientPhone}
+                                                onChangeText={setCustomClientPhone}
+                                                keyboardType="phone-pad"
+                                            />
+                                        </View>
+                                    )}
+                                </View>
                             </View>
 
                             {/* Statutory Sections */}
@@ -841,7 +1027,7 @@ export const ECourtsSearchModal: React.FC<Props> = ({
                                 </View>
                             </View>
 
-                            {/* Primary Import CTA */}
+                            {/* Primary Import CTA with dynamic Client tag */}
                             <SmoothPressable
                                 style={styles.importActionBtn}
                                 onPress={handleImport}
@@ -855,7 +1041,9 @@ export const ECourtsSearchModal: React.FC<Props> = ({
                                     style={styles.importActionGradient}
                                 >
                                     <MaterialCommunityIcons name="download-box" size={18} color="#000000" />
-                                    <Text style={styles.importActionText}>Import & Save Case to Workspace</Text>
+                                    <Text style={styles.importActionText} numberOfLines={1}>
+                                        Import Case (Client: {clientSide === 'CUSTOM' ? (customClientName.trim() || 'Specific Client') : clientSide === 'RESPONDENT' ? (searchResult.respondent?.name || 'Respondent') : (searchResult.petitioner?.name || 'Petitioner')})
+                                    </Text>
                                 </LinearGradient>
                             </SmoothPressable>
                         </View>
@@ -1627,40 +1815,141 @@ const createStyles = (colors: any, spacing: any, isDark: boolean) =>
             color: isDark ? '#9CA3AF' : '#6B7280',
             marginTop: 2,
         },
-        partiesCard: {
-            backgroundColor: isDark ? '#202430' : '#F9FAFB',
-            borderRadius: 10,
-            padding: 10,
-            marginBottom: 12,
-            borderWidth: 1,
-            borderColor: isDark ? 'rgba(255,255,255,0.06)' : 'rgba(0,0,0,0.06)',
+        clientSelectionSection: {
+            backgroundColor: isDark ? '#1C212D' : '#F8FAFC',
+            borderRadius: 14,
+            padding: 14,
+            marginBottom: 14,
+            borderWidth: 1.2,
+            borderColor: isDark ? 'rgba(212, 175, 55, 0.25)' : 'rgba(212, 175, 55, 0.35)',
         },
-        partyItemRow: {
+        clientSelectionHeader: {
+            flexDirection: 'row',
+            alignItems: 'center',
+            gap: 8,
+            marginBottom: 12,
+        },
+        clientSelectionIconBox: {
+            width: 32,
+            height: 32,
+            borderRadius: 8,
+            backgroundColor: 'rgba(212, 175, 55, 0.15)',
+            alignItems: 'center',
+            justifyContent: 'center',
+        },
+        clientSelectionTitle: {
+            fontSize: 14,
+            fontWeight: '800',
+            color: '#D4AF37',
+            letterSpacing: 0.2,
+        },
+        clientSelectionSubtitle: {
+            fontSize: 11,
+            color: isDark ? '#9CA3AF' : '#6B7280',
+            marginTop: 1,
+        },
+        clientOptionsContainer: {
+            gap: 10,
+        },
+        clientOptionCard: {
             flexDirection: 'row',
             alignItems: 'flex-start',
             gap: 10,
+            backgroundColor: isDark ? '#141822' : '#FFFFFF',
+            borderRadius: 12,
+            padding: 12,
+            borderWidth: 1.2,
+            borderColor: isDark ? 'rgba(255, 255, 255, 0.08)' : 'rgba(0, 0, 0, 0.08)',
         },
-        partyTag: {
-            fontSize: 10,
+        clientOptionCardActive: {
+            borderColor: '#D4AF37',
+            backgroundColor: isDark ? 'rgba(212, 175, 55, 0.08)' : 'rgba(212, 175, 55, 0.05)',
+            shadowColor: '#D4AF37',
+            shadowOffset: { width: 0, height: 2 },
+            shadowOpacity: 0.15,
+            shadowRadius: 6,
+            elevation: 3,
+        },
+        clientOptionRadio: {
+            marginTop: 2,
+        },
+        clientOptionBadgeRow: {
+            flexDirection: 'row',
+            alignItems: 'center',
+            gap: 6,
+            marginBottom: 4,
+        },
+        clientSideBadge: {
+            backgroundColor: isDark ? 'rgba(255, 255, 255, 0.08)' : 'rgba(0, 0, 0, 0.06)',
+            paddingHorizontal: 7,
+            paddingVertical: 2.5,
+            borderRadius: 4,
+        },
+        clientSideBadgeActive: {
+            backgroundColor: '#D4AF37',
+        },
+        clientSideBadgeText: {
+            fontSize: 9.5,
             fontWeight: '800',
             color: isDark ? '#9CA3AF' : '#6B7280',
-            width: 80,
-            marginTop: 1,
+            letterSpacing: 0.3,
         },
-        partyName: {
-            fontSize: 13,
-            fontWeight: '600',
-            color: isDark ? '#FFFFFF' : '#111827',
+        clientSideBadgeTextActive: {
+            color: '#000000',
         },
-        advocateName: {
-            fontSize: 11,
+        representingBadge: {
+            flexDirection: 'row',
+            alignItems: 'center',
+            gap: 3,
+            backgroundColor: isDark ? 'rgba(212, 175, 55, 0.18)' : 'rgba(212, 175, 55, 0.14)',
+            paddingHorizontal: 6,
+            paddingVertical: 2,
+            borderRadius: 4,
+            borderWidth: 1,
+            borderColor: 'rgba(212, 175, 55, 0.4)',
+        },
+        representingBadgeText: {
+            fontSize: 9,
+            fontWeight: '800',
             color: '#D4AF37',
-            marginTop: 1,
+            letterSpacing: 0.4,
         },
-        partyDivider: {
-            height: 1,
-            backgroundColor: isDark ? 'rgba(255,255,255,0.06)' : 'rgba(0,0,0,0.06)',
-            marginVertical: 8,
+        clientOptionName: {
+            fontSize: 13.5,
+            fontWeight: '700',
+            color: isDark ? '#FFFFFF' : '#111827',
+            lineHeight: 18,
+        },
+        clientOptionAdvocate: {
+            fontSize: 11.5,
+            color: '#D4AF37',
+            fontWeight: '600',
+            marginTop: 2,
+        },
+        customClientInputBox: {
+            marginTop: 6,
+            backgroundColor: isDark ? '#141822' : '#FFFFFF',
+            borderRadius: 10,
+            padding: 12,
+            borderWidth: 1,
+            borderColor: isDark ? 'rgba(212, 175, 55, 0.3)' : 'rgba(212, 175, 55, 0.4)',
+            gap: 6,
+        },
+        customInputLabel: {
+            fontSize: 11,
+            fontWeight: '700',
+            color: isDark ? '#D1D5DB' : '#374151',
+            marginTop: 4,
+        },
+        customInput: {
+            backgroundColor: isDark ? '#1E2536' : '#F3F4F6',
+            borderRadius: 8,
+            paddingHorizontal: 12,
+            paddingVertical: Platform.OS === 'ios' ? 10 : 8,
+            fontSize: 13,
+            color: isDark ? '#FFFFFF' : '#111827',
+            borderWidth: 1,
+            borderColor: isDark ? 'rgba(255, 255, 255, 0.1)' : 'rgba(0, 0, 0, 0.1)',
         },
         sectionsContainer: {
             marginBottom: 14,

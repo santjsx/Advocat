@@ -652,6 +652,9 @@ export const HelpScreen: React.FC<Props> = ({ navigation }) => {
 
                         <Text style={styles.subHeader}>What Gets Auto-Populated on Import?</Text>
                         <Bullet>
+                            <Text style={styles.boldText}>"Who is your Client?" Selection:</Text> Choose whether your chamber represents the Petitioner/Victim or Accused/Respondent with 1-tap, or specify a specific co-accused name.
+                        </Bullet>
+                        <Bullet>
                             <Text style={styles.boldText}>Full Cause Title & Parties:</Text> Petitioner and Respondent names, counsel on record, and chamber addresses.
                         </Bullet>
                         <Bullet>

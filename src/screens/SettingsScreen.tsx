@@ -3,7 +3,7 @@ import {
     View, Text, StyleSheet, ScrollView, TouchableOpacity, Switch,
     Alert, TextInput, Platform, Modal, Animated, ActivityIndicator
 } from 'react-native';
-import { SafeAreaView } from 'react-native-safe-area-context';
+import { SafeAreaView, useSafeAreaInsets } from 'react-native-safe-area-context';
 import { useAppStore } from '../store/useAppStore';
 import { useTheme } from '../theme/ThemeContext';
 import { spacing, layout } from '../theme/colors';
@@ -39,6 +39,7 @@ type Props = CompositeScreenProps<
 
 export const SettingsScreen: React.FC<Props> = ({ navigation }) => {
     const { colors, mode, toggleTheme } = useTheme();
+    const insets = useSafeAreaInsets();
 
     const userName = useAppStore(state => state.userName);
     const setUserName = useAppStore(state => state.setUserName);
@@ -380,6 +381,7 @@ This will REPLACE your current data. Are you sure?`,
                     style={[
                         styles.toastContainer,
                         {
+                            top: (insets.top || 0) + (Platform.OS === 'android' ? 16 : 8),
                             opacity: toastOpacity,
                             transform: [{ translateY: toastTranslateY }],
                         },
@@ -1928,7 +1930,6 @@ const createStyles = (colors: any) => StyleSheet.create({
     },
     toastContainer: {
         position: 'absolute',
-        top: 14,
         left: 16,
         right: 16,
         zIndex: 9999,

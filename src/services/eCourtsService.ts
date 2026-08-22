@@ -344,9 +344,13 @@ export const fetchECourtsByCaseNumber = async (
     };
 };
 
-// Convert eCourts Result to Native Advocat Objects (Bulletproof against partial or missing data)
+export type ECourtsClientSide = 'PETITIONER' | 'RESPONDENT' | 'CUSTOM';
+
+// Convert eCourts Result to Native Advocat Objects with Advocate Client Role Selection
 export const convertECourtsToAdvocatCase = (
-    result: ECourtsCaseResult
+    result: ECourtsCaseResult,
+    clientSide: ECourtsClientSide = 'PETITIONER',
+    customClient?: { name?: string; phone?: string; notes?: string }
 ): {
     newCase: Case;
     sections: LegalSection[];
@@ -358,6 +362,8 @@ export const convertECourtsToAdvocatCase = (
 
     const petitionerName = result?.petitioner?.name || 'Petitioner';
     const respondentName = result?.respondent?.name || 'Respondent';
+    const petitionerAdv = result?.petitioner?.advocate || '';
+    const respondentAdv = result?.respondent?.advocate || '';
     const courtName = result?.courtName || 'Court of Competent Jurisdiction';
     const caseNumber = result?.caseNumber || result?.cnr || 'Imported Case';
     const caseTitle = result?.caseTitle || `${petitionerName} vs. ${respondentName}`;
@@ -365,7 +371,35 @@ export const convertECourtsToAdvocatCase = (
     const stage: CaseStage = result?.stage || 'PLEADING';
     const status: CaseStatus = result?.status || 'ACTIVE';
 
-    // 1. Legal Sections
+    // 1. Resolve which party is the Advocate's Client
+    let selectedClientName = petitionerName;
+    let selectedClientPhone = result?.petitioner?.phone || '';
+    let selectedClientAddress = result?.petitioner?.address || '';
+    let clientRoleDesc = 'Petitioner / Complainant / Victim';
+    let clientNotes = '';
+
+    if (clientSide === 'RESPONDENT') {
+        selectedClientName = respondentName;
+        selectedClientPhone = result?.respondent?.phone || '';
+        selectedClientAddress = result?.respondent?.address || '';
+        clientRoleDesc = 'Respondent / Accused / Defendant';
+        clientNotes = `Client Side: ${clientRoleDesc}\nAdvocate on Record: ${respondentAdv || 'My Chamber'}\nOpposite Party (Petitioner/Complainant): ${petitionerName}${petitionerAdv ? ` (Adv. ${petitionerAdv})` : ''}`;
+    } else if (clientSide === 'CUSTOM') {
+        selectedClientName = customClient?.name?.trim() || (respondentName !== 'Respondent' ? respondentName : petitionerName);
+        selectedClientPhone = customClient?.phone?.trim() || '';
+        selectedClientAddress = '';
+        clientRoleDesc = 'Specific Client / Co-Accused / Intervenor';
+        clientNotes = `Specific Client: ${selectedClientName}\nPetitioner: ${petitionerName}${petitionerAdv ? ` (${petitionerAdv})` : ''}\nRespondent: ${respondentName}${respondentAdv ? ` (${respondentAdv})` : ''}${customClient?.notes ? `\nNotes: ${customClient.notes}` : ''}`;
+    } else {
+        // PETITIONER default
+        selectedClientName = petitionerName;
+        selectedClientPhone = result?.petitioner?.phone || '';
+        selectedClientAddress = result?.petitioner?.address || '';
+        clientRoleDesc = 'Petitioner / Complainant / Victim';
+        clientNotes = `Client Side: ${clientRoleDesc}\nAdvocate on Record: ${petitionerAdv || 'My Chamber'}\nOpposite Party (Respondent/Accused): ${respondentName}${respondentAdv ? ` (Adv. ${respondentAdv})` : ''}`;
+    }
+
+    // 2. Legal Sections
     const rawSections = Array.isArray(result?.sections) ? result.sections : [];
     const sections: LegalSection[] = rawSections.map(s => ({
         id: uuidv4(),
@@ -375,7 +409,7 @@ export const convertECourtsToAdvocatCase = (
         isChargeSheet: false,
     }));
 
-    // 2. Timeline Events
+    // 3. Timeline Events
     const timeline: TimelineEvent[] = [];
 
     // Registration event
@@ -383,7 +417,7 @@ export const convertECourtsToAdvocatCase = (
         id: uuidv4(),
         type: 'CASE_CREATED',
         title: `Filed at ${courtName}`,
-        description: `Filing No: ${result?.filingNumber || caseNumber} registered on ${result?.registrationDate || result?.filingDate || 'Registry'}. Bench: ${result?.bench || 'Regular Bench'}.`,
+        description: `Filing No: ${result?.filingNumber || caseNumber} registered on ${result?.registrationDate || result?.filingDate || 'Registry'}. Bench: ${result?.bench || 'Regular Bench'}. Representing: ${selectedClientName} (${clientRoleDesc}).`,
         date: result?.filingDate ? new Date(result.filingDate).toISOString() : now,
     });
 
@@ -400,7 +434,7 @@ export const convertECourtsToAdvocatCase = (
         });
     }
 
-    // 3. Deadline (Next Hearing)
+    // 4. Deadline (Next Hearing)
     let deadline: Deadline | undefined;
     if (result?.nextHearing?.date) {
         const hearingDate = new Date(result.nextHearing.date);
@@ -427,24 +461,24 @@ export const convertECourtsToAdvocatCase = (
         };
     }
 
-    // 4. Native Case Object
+    // 5. Native Case Object
     const newCase: Case = {
         id: caseId,
         name: caseTitle,
         caseNumber,
         courtName,
         client: {
-            name: petitionerName,
-            phone: result?.petitioner?.phone || '',
-            address: result?.petitioner?.address || '',
-            notes: `Advocate on Record: ${result?.petitioner?.advocate || 'N/A'}\nRespondent: ${respondentName} (${result?.respondent?.advocate || ''})`,
+            name: selectedClientName,
+            phone: selectedClientPhone,
+            address: selectedClientAddress,
+            notes: clientNotes,
         },
-        clientName: petitionerName,
-        clientPhone: result?.petitioner?.phone || '',
+        clientName: selectedClientName,
+        clientPhone: selectedClientPhone,
         caseType,
         stage,
         status,
-        description: `Imported from eCourts Screenshot Ingestion.\nCNR: ${result?.cnr ? formatCNRDisplay(result.cnr) : 'N/A'}\nCourt: ${courtName}\nBench: ${result?.bench || 'N/A'}\nPresiding Judge: ${result?.presidingJudge || 'N/A'}\n${result?.firDetails ? `FIR: ${result.firDetails.firNumber} at ${result.firDetails.policeStation}` : ''}`,
+        description: `Representing: ${selectedClientName} (${clientRoleDesc})\nImported from eCourts Screenshot Ingestion.\nCNR: ${result?.cnr ? formatCNRDisplay(result.cnr) : 'N/A'}\nCourt: ${courtName}\nBench: ${result?.bench || 'N/A'}\nPresiding Judge: ${result?.presidingJudge || 'N/A'}\n${result?.firDetails ? `FIR: ${result.firDetails.firNumber} at ${result.firDetails.policeStation}` : ''}`,
         filingDate: result?.filingDate || now,
         sections,
         timeline,

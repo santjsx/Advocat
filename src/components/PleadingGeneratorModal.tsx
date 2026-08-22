@@ -710,6 +710,7 @@ export const PleadingGeneratorModal: React.FC<Props> = ({
                             style={[
                                 styles.toastContainer,
                                 {
+                                    top: (insets?.top || 0) + (Platform.OS === 'android' ? 16 : 8),
                                     opacity: toastOpacity,
                                     transform: [{ translateY: toastTranslateY }],
                                 },
@@ -1720,7 +1721,6 @@ const createStyles = (
         },
         toastContainer: {
             position: 'absolute',
-            top: 14,
             left: 16,
             right: 16,
             zIndex: 9999,
