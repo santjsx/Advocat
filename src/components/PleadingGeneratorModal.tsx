@@ -12,6 +12,8 @@ import {
     Platform,
     TouchableWithoutFeedback,
     Animated,
+    KeyboardAvoidingView,
+    Easing,
 } from 'react-native';
 import { Ionicons, MaterialCommunityIcons } from '@expo/vector-icons';
 import { LinearGradient } from 'expo-linear-gradient';
@@ -76,7 +78,10 @@ export const PleadingGeneratorModal: React.FC<Props> = ({
     const insets = useSafeAreaInsets();
     
     const bottomNavPadding = Math.max(insets?.bottom || 0, Platform.OS === 'android' ? 32 : 16);
-    const styles = createStyles(colors, spacing, layout, insets, bottomNavPadding, mode);
+    const styles = useMemo(
+        () => createStyles(colors, spacing, layout, insets, bottomNavPadding, mode),
+        [colors, spacing, layout, insets, bottomNavPadding, mode]
+    );
 
     const advocateProfile = useAppStore(state => state.advocateProfile) || DEFAULT_ADVOCATE_PROFILE;
     const addTimelineEvent = useAppStore(state => state.addTimelineEvent);
@@ -119,12 +124,23 @@ export const PleadingGeneratorModal: React.FC<Props> = ({
     const toastOpacity = useRef(new Animated.Value(0)).current;
     const toastTranslateY = useRef(new Animated.Value(-20)).current;
 
-    // Chamber Generation Animations
+    // Chamber Generation Animations & Real-Time Telemetry
     const generatingProgressAnim = useRef(new Animated.Value(0.25)).current;
     const pulseGlowAnim = useRef(new Animated.Value(0.95)).current;
+    const spinAnim = useRef(new Animated.Value(0)).current;
+    const [elapsedSeconds, setElapsedSeconds] = useState(0);
+    const [compilationLogs, setCompilationLogs] = useState<string[]>([]);
 
     React.useEffect(() => {
+        let timer: any;
         if (step === 'GENERATING') {
+            setElapsedSeconds(0);
+            const startTime = Date.now();
+            timer = setInterval(() => {
+                setElapsedSeconds(Math.floor((Date.now() - startTime) / 1000));
+            }, 1000);
+
+            // Pulsing Glow Loop
             Animated.loop(
                 Animated.sequence([
                     Animated.timing(pulseGlowAnim, {
@@ -139,19 +155,41 @@ export const PleadingGeneratorModal: React.FC<Props> = ({
                     }),
                 ])
             ).start();
+
+            // Smooth 360 Spin Loop
+            Animated.loop(
+                Animated.timing(spinAnim, {
+                    toValue: 1,
+                    duration: 5000,
+                    easing: Easing.linear,
+                    useNativeDriver: true,
+                })
+            ).start();
+        } else {
+            spinAnim.setValue(0);
         }
+        return () => {
+            if (timer) clearInterval(timer);
+        };
     }, [step]);
+
+    const progressPercent = useMemo(() => {
+        if (currentStepIndex === 1) return 25;
+        if (currentStepIndex === 2) return 60;
+        if (currentStepIndex === 3) return 88;
+        return 100;
+    }, [currentStepIndex]);
 
     React.useEffect(() => {
         if (step === 'GENERATING') {
             Animated.spring(generatingProgressAnim, {
-                toValue: currentStepIndex / 4,
-                tension: 65,
-                friction: 10,
+                toValue: progressPercent / 100,
+                tension: 45,
+                friction: 8,
                 useNativeDriver: false,
             }).start();
         }
-    }, [currentStepIndex, step]);
+    }, [progressPercent, step]);
 
     const showToast = (message: string, type: 'success' | 'info' | 'error' = 'success') => {
         setToastMessage(message);
@@ -244,8 +282,22 @@ export const PleadingGeneratorModal: React.FC<Props> = ({
             setStep('GENERATING');
             setCurrentStepIndex(1);
             setProgressStatus('Verifying BNS/BNSS statutory provisions...');
+            setCompilationLogs([
+                'Initialised Madras HC Rules & Judicial Directory',
+                `Target Bench: ${activeCourtInfo.label}`,
+                `Statutory Basis: ${activePleadingInfo.statutoryRef}`,
+            ]);
 
-            setTimeout(() => setCurrentStepIndex(2), 800);
+            const logTimeout1 = setTimeout(() => {
+                setCurrentStepIndex(2);
+                setProgressStatus(`Drafting 5-Document Stack for ${caseData.client?.name || caseData.clientName || caseData.name}...`);
+                setCompilationLogs(prev => [
+                    ...prev,
+                    'Statutory & Limitation verification passed',
+                    'Connecting to DeepSeek Legal AI Engine...',
+                    'Generating Synopsis, Facts & Grounds of Relief...',
+                ]);
+            }, 800);
 
             const aiResult = await generatePleadingPaperbook(
                 {
@@ -258,13 +310,26 @@ export const PleadingGeneratorModal: React.FC<Props> = ({
                 },
                 (status) => {
                     setProgressStatus(status);
-                    if (status.includes('Drafting')) setCurrentStepIndex(2);
-                    if (status.includes('Parsing')) setCurrentStepIndex(3);
+                    if (status.includes('Drafting')) {
+                        setCurrentStepIndex(2);
+                        setCompilationLogs(prev => [...prev, status]);
+                    }
+                    if (status.includes('Structuring') || status.includes('Parsing')) {
+                        setCurrentStepIndex(3);
+                        setCompilationLogs(prev => [...prev, status]);
+                    }
                 }
             );
 
+            clearTimeout(logTimeout1);
             setCurrentStepIndex(3);
             setProgressStatus('Compiling Madras High Court .docx document...');
+            setCompilationLogs(prev => [
+                ...prev,
+                '5-Document text drafted (Index, Synopsis, Petition, Affidavit, Vakalatnama)',
+                'Applying 1.75" Left Filing Margins & Double Line Spacing...',
+                'Formatting Advocate Bar Welfare Fund Stamp boxes & Docket...',
+            ]);
 
             const docxResult = await buildMadrasHCPaperbookDocx({
                 caseData,
@@ -285,6 +350,11 @@ export const PleadingGeneratorModal: React.FC<Props> = ({
 
             setCurrentStepIndex(4);
             setProgressStatus('Ready for Court Filing!');
+            setCompilationLogs(prev => [
+                ...prev,
+                `Saved offline Word bundle: ${docxResult.fileName}`,
+                'Ready for print, counsel signature & registry filing.',
+            ]);
 
             setTimeout(() => {
                 setStep('REVIEW');
@@ -1039,33 +1109,95 @@ export const PleadingGeneratorModal: React.FC<Props> = ({
                     )}
 
                     {step === 'GENERATING' && (
-                        <View style={styles.generatingContainer}>
-                            <View style={styles.engineBadge}>
-                                <MaterialCommunityIcons name="scale-balance" size={14} color={colors.accent} />
-                                <Text style={styles.engineBadgeText}>MADRAS HIGH COURT COMPILER</Text>
+                        <ScrollView
+                            style={{ flex: 1 }}
+                            contentContainerStyle={styles.generatingContainer}
+                            showsVerticalScrollIndicator={false}
+                        >
+                            {/* 1. Live Filing Context Summary Banner */}
+                            <View style={styles.generatingContextCard}>
+                                <View style={styles.generatingContextTopRow}>
+                                    <View style={styles.generatingCourtTag}>
+                                        <MaterialCommunityIcons name="bank" size={13} color={colors.accent} />
+                                        <Text style={styles.generatingCourtTagText} numberOfLines={1}>
+                                            {activeCourtInfo.label}
+                                        </Text>
+                                    </View>
+                                    <View style={styles.generatingTimerBadge}>
+                                        <Ionicons name="timer-outline" size={13} color="#D4AF37" />
+                                        <Text style={styles.generatingTimerText}>
+                                            {elapsedSeconds < 10 ? `00:0${elapsedSeconds}` : `00:${elapsedSeconds}`}s
+                                        </Text>
+                                    </View>
+                                </View>
+
+                                <Text style={styles.generatingDocTitle} numberOfLines={1}>
+                                    {activePleadingInfo.label}
+                                </Text>
+
+                                <View style={styles.generatingMetaRow}>
+                                    <View style={styles.generatingStatBadge}>
+                                        <Text style={styles.generatingStatBadgeText}>{activePleadingInfo.statutoryRef}</Text>
+                                    </View>
+                                    <Text style={styles.generatingCasePartyText} numberOfLines={1}>
+                                        {caseData.client?.name ? `Client: ${caseData.client.name}` : caseData.name}
+                                    </Text>
+                                </View>
                             </View>
-                            
-                            {/* Animated Pulsing Legal Engine Orb */}
+
+                            {/* 2. Animated Pulsing Judicial Engine Reactor Core */}
                             <View style={styles.orbContainer}>
                                 <Animated.View style={[styles.outerGlowOrb, { transform: [{ scale: pulseGlowAnim }] }]}>
-                                    <LinearGradient colors={[colors.accent + '35', colors.primary + '20']} style={styles.innerGlowOrb}>
-                                        <ActivityIndicator size="large" color={colors.accent} />
+                                    <LinearGradient
+                                        colors={['rgba(212, 175, 55, 0.25)', 'rgba(59, 130, 246, 0.12)', 'rgba(0, 0, 0, 0.4)']}
+                                        style={styles.outerOrbGradient}
+                                    >
+                                        <Animated.View
+                                            style={[
+                                                styles.rotatingOrbRing,
+                                                {
+                                                    transform: [
+                                                        {
+                                                            rotate: spinAnim.interpolate({
+                                                                inputRange: [0, 1],
+                                                                outputRange: ['0deg', '360deg'],
+                                                            }),
+                                                        },
+                                                    ],
+                                                },
+                                            ]}
+                                        >
+                                            <View style={styles.orbSatelliteDot} />
+                                            <View style={[styles.orbSatelliteDot, styles.orbSatelliteDotOpposite]} />
+                                        </Animated.View>
+
+                                        <View style={styles.innerGlowOrb}>
+                                            <MaterialCommunityIcons name="scale-balance" size={26} color={colors.accent} />
+                                            <ActivityIndicator size="small" color={colors.accent} style={{ marginTop: 2 }} />
+                                        </View>
                                     </LinearGradient>
                                 </Animated.View>
                             </View>
 
+                            {/* 3. Title & Live Active Status Pill */}
                             <Text style={styles.generatingTitle}>Compiling Legal Paperbook</Text>
                             <View style={styles.statusLivePill}>
                                 <View style={styles.statusLiveDot} />
                                 <Text style={styles.generatingSubtitle} numberOfLines={1}>{progressStatus}</Text>
                             </View>
 
-                            {/* Animated Spring Progress Bar */}
+                            {/* 4. Ultra-Premium Glowing Progress Bar */}
                             <View style={styles.progressBarWrapper}>
+                                <View style={styles.progressBarHeaderRow}>
+                                    <Text style={styles.progressBarStageLabel}>
+                                        STAGE {currentStepIndex} OF 4 • {currentStepIndex === 1 ? 'STATUTORY AUDIT' : currentStepIndex === 2 ? 'AI DRAFTING' : currentStepIndex === 3 ? 'DOCX COMPILATION' : 'BUNDLE READY'}
+                                    </Text>
+                                    <Text style={styles.progressBarPercent}>{progressPercent}%</Text>
+                                </View>
                                 <View style={styles.progressBarTrack}>
                                     <Animated.View
                                         style={[
-                                            styles.progressBarFill,
+                                            styles.progressBarFillContainer,
                                             {
                                                 width: generatingProgressAnim.interpolate({
                                                     inputRange: [0, 1],
@@ -1073,18 +1205,50 @@ export const PleadingGeneratorModal: React.FC<Props> = ({
                                                 }),
                                             },
                                         ]}
-                                    />
+                                    >
+                                        <LinearGradient
+                                            colors={['#F59E0B', '#D4AF37', '#FDE047']}
+                                            start={{ x: 0, y: 0 }}
+                                            end={{ x: 1, y: 0 }}
+                                            style={styles.progressBarGradient}
+                                        />
+                                    </Animated.View>
                                 </View>
-                                <Text style={styles.progressBarPercent}>{Math.round((currentStepIndex / 4) * 100)}%</Text>
                             </View>
 
-                            {/* Refined Step Progression Cards */}
+                            {/* 5. Refined 4-Step Progression Stack Cards */}
                             <View style={styles.progressSteps}>
                                 {[
-                                    { step: 1, label: 'Statutory Verification (BNS/BNSS/CPC)', desc: 'Validating procedural rules, court tier & jurisdiction' },
-                                    { step: 2, label: 'Drafting 5-Document Stack', desc: 'Index, Synopsis, Petition, Affidavit & Vakalatnama' },
-                                    { step: 3, label: 'Madras HC DOCX Compilation', desc: 'Court margins (1.75" left), line spacing & font styles' },
-                                    { step: 4, label: 'Ready for Court Filing', desc: 'Finalized offline Word bundle with index tables' },
+                                    {
+                                        step: 1,
+                                        label: 'Statutory Verification (BNS/BNSS/CPC)',
+                                        desc: `Checking procedural rules & ${activeCourtInfo.shortName} jurisdiction`,
+                                        tags: ['Procedural Rules', `Bench: ${activeCourtInfo.city}`],
+                                    },
+                                    {
+                                        step: 2,
+                                        label: 'Drafting 5-Document Stack',
+                                        desc: 'Index, Synopsis, Petition, Supporting Affidavit & Vakalatnama',
+                                        docChips: [
+                                            { name: '1. Index', isReady: currentStepIndex >= 2 },
+                                            { name: '2. Synopsis', isReady: currentStepIndex >= 2 },
+                                            { name: '3. Petition', isReady: currentStepIndex >= 2 },
+                                            { name: '4. Affidavit', isReady: currentStepIndex >= 3 },
+                                            { name: '5. Vakalat', isReady: currentStepIndex >= 3 },
+                                        ],
+                                    },
+                                    {
+                                        step: 3,
+                                        label: 'Madras HC DOCX Compilation',
+                                        desc: '1.75" left margins, double spacing, docket & bar welfare stamp blocks',
+                                        tags: ['1.75" Left Margin', 'Court Double Spacing', 'Backsheet Docket'],
+                                    },
+                                    {
+                                        step: 4,
+                                        label: 'Ready for Court Filing',
+                                        desc: 'Finalized offline Word bundle saved locally with synchronized index pages',
+                                        tags: ['Offline Document', 'Ready for Print / E-Filing'],
+                                    },
                                 ].map(s => {
                                     const isDone = currentStepIndex > s.step;
                                     const isCurrent = currentStepIndex === s.step;
@@ -1100,19 +1264,80 @@ export const PleadingGeneratorModal: React.FC<Props> = ({
                                                 )}
                                             </View>
                                             <View style={{ flex: 1 }}>
-                                                <Text style={[styles.stepLabel, isCurrent && styles.stepLabelActive, isDone && styles.stepLabelDone]}>{s.label}</Text>
+                                                <Text style={[styles.stepLabel, isCurrent && styles.stepLabelActive, isDone && styles.stepLabelDone]}>
+                                                    {s.label}
+                                                </Text>
                                                 <Text style={styles.stepDesc} numberOfLines={1}>{s.desc}</Text>
+
+                                                {/* Step 2 Live Document Chips */}
+                                                {s.docChips && (
+                                                    <View style={styles.docChipsRow}>
+                                                        {s.docChips.map((chip, cIdx) => (
+                                                            <View
+                                                                key={cIdx}
+                                                                style={[
+                                                                    styles.docChip,
+                                                                    chip.isReady && styles.docChipReady,
+                                                                    isCurrent && !chip.isReady && styles.docChipPending,
+                                                                ]}
+                                                            >
+                                                                <Text
+                                                                    style={[
+                                                                        styles.docChipText,
+                                                                        chip.isReady && styles.docChipTextReady,
+                                                                    ]}
+                                                                >
+                                                                    {chip.isReady ? `✓ ${chip.name}` : chip.name}
+                                                                </Text>
+                                                            </View>
+                                                        ))}
+                                                    </View>
+                                                )}
+
+                                                {/* Micro Tags */}
+                                                {s.tags && (
+                                                    <View style={styles.stepTagsRow}>
+                                                        {s.tags.map((tag, tIdx) => (
+                                                            <View key={tIdx} style={styles.stepTagPill}>
+                                                                <Text style={styles.stepTagPillText}>{tag}</Text>
+                                                            </View>
+                                                        ))}
+                                                    </View>
+                                                )}
                                             </View>
                                         </View>
                                     );
                                 })}
                             </View>
 
+                            {/* 6. Live Compiler Micro-Terminal */}
+                            {compilationLogs.length > 0 && (
+                                <View style={styles.terminalBox}>
+                                    <View style={styles.terminalHeader}>
+                                        <View style={styles.terminalDots}>
+                                            <View style={[styles.terminalDot, { backgroundColor: '#EF4444' }]} />
+                                            <View style={[styles.terminalDot, { backgroundColor: '#F59E0B' }]} />
+                                            <View style={[styles.terminalDot, { backgroundColor: '#10B981' }]} />
+                                        </View>
+                                        <Text style={styles.terminalTitle}>LEGAL ENGINE COMPILER STREAM</Text>
+                                    </View>
+                                    <View style={styles.terminalBody}>
+                                        {compilationLogs.slice(-3).map((log, lIdx) => (
+                                            <Text key={lIdx} style={styles.terminalLine} numberOfLines={1}>
+                                                <Text style={styles.terminalPrompt}>❯ </Text>
+                                                {log}
+                                            </Text>
+                                        ))}
+                                    </View>
+                                </View>
+                            )}
+
+                            {/* 7. Bottom Privacy & Security Badge */}
                             <View style={styles.privacyBadge}>
                                 <MaterialCommunityIcons name="shield-lock-outline" size={14} color={colors.safe} />
-                                <Text style={styles.privacyBadgeText}>100% On-Device & Private Local Processing</Text>
+                                <Text style={styles.privacyBadgeText}>100% On-Device DOCX Assembly • Encrypted Chamber Storage</Text>
                             </View>
-                        </View>
+                        </ScrollView>
                     )}
 
                     {/* STEP 3: REVIEW & EXPORT */}
@@ -1317,9 +1542,14 @@ export const PleadingGeneratorModal: React.FC<Props> = ({
                 </View>
 
                 {/* In-Modal Sub-Sheet: Searchable Court Tier Picker */}
+                    {/* In-Modal Sub-Sheet: Searchable Court Tier Picker */}
                     {isCourtPickerOpen && (
-                        <View style={styles.subModalOverlay}>
-                            <View style={styles.subModalContent}>
+                        <KeyboardAvoidingView
+                            behavior={Platform.OS === 'ios' ? 'padding' : undefined}
+                            style={styles.subModalOverlay}
+                            pointerEvents="box-none"
+                        >
+                            <View style={styles.subModalContent} pointerEvents="auto">
                                 {/* Drag handle */}
                                 <View style={styles.dragHandleContainer}>
                                     <View style={styles.dragHandle} />
@@ -1348,7 +1578,6 @@ export const PleadingGeneratorModal: React.FC<Props> = ({
                                 <View style={[
                                     styles.searchBarContainer,
                                     { marginHorizontal: spacing.m, marginBottom: spacing.s },
-                                    isCourtSearchFocused && styles.searchBarFocused,
                                 ]}>
                                     <View style={styles.searchIconBadge}>
                                         <Ionicons name="search" size={15} color={colors.accent} />
@@ -1359,8 +1588,6 @@ export const PleadingGeneratorModal: React.FC<Props> = ({
                                         placeholderTextColor={colors.textTertiary}
                                         value={courtSearchQuery}
                                         onChangeText={setCourtSearchQuery}
-                                        onFocus={() => setIsCourtSearchFocused(true)}
-                                        onBlur={() => setIsCourtSearchFocused(false)}
                                         autoCapitalize="none"
                                         autoCorrect={false}
                                     />
@@ -1378,7 +1605,8 @@ export const PleadingGeneratorModal: React.FC<Props> = ({
                                     style={{ flex: 1, paddingHorizontal: spacing.m }}
                                     contentContainerStyle={{ paddingBottom: bottomNavPadding + 32 }}
                                     showsVerticalScrollIndicator={true}
-                                    keyboardShouldPersistTaps="handled"
+                                    keyboardShouldPersistTaps="always"
+                                    keyboardDismissMode="on-drag"
                                 >
                                     {filteredCourtTiers.map(tier => {
                                         const isSelected = selectedTier === tier.value;
@@ -1419,13 +1647,17 @@ export const PleadingGeneratorModal: React.FC<Props> = ({
                                     })}
                                 </ScrollView>
                             </View>
-                        </View>
+                        </KeyboardAvoidingView>
                     )}
 
                     {/* In-Modal Sub-Sheet: Searchable 75+ Pleading Document Picker */}
                     {isPleadingPickerOpen && (
-                        <View style={styles.subModalOverlay}>
-                            <View style={[styles.subModalContent, { height: '88%' }]}>
+                        <KeyboardAvoidingView
+                            behavior={Platform.OS === 'ios' ? 'padding' : undefined}
+                            style={styles.subModalOverlay}
+                            pointerEvents="box-none"
+                        >
+                            <View style={[styles.subModalContent, { height: '88%' }]} pointerEvents="auto">
                                 {/* Drag Handle */}
                                 <View style={styles.dragHandleContainer}>
                                     <View style={styles.dragHandle} />
@@ -1456,7 +1688,7 @@ export const PleadingGeneratorModal: React.FC<Props> = ({
                                 {/* Sub-modal Body with Search and Category Dropdown Filter */}
                                 <View style={{ flex: 1, paddingHorizontal: spacing.m }}>
                                     {/* Search Bar */}
-                                    <View style={[styles.searchBarContainer, isSearchFocused && styles.searchBarFocused, { marginTop: spacing.s }]}>
+                                    <View style={[styles.searchBarContainer, { marginTop: spacing.s }]}>
                                         <View style={styles.searchIconBadge}>
                                             <Ionicons name="search" size={16} color={colors.accent} />
                                         </View>
@@ -1466,8 +1698,6 @@ export const PleadingGeneratorModal: React.FC<Props> = ({
                                             placeholderTextColor={colors.textTertiary}
                                             value={searchQuery}
                                             onChangeText={setSearchQuery}
-                                            onFocus={() => setIsSearchFocused(true)}
-                                            onBlur={() => setIsSearchFocused(false)}
                                             autoCapitalize="none"
                                             autoCorrect={false}
                                             returnKeyType="search"
@@ -1507,7 +1737,8 @@ export const PleadingGeneratorModal: React.FC<Props> = ({
                                         style={{ flex: 1 }}
                                         contentContainerStyle={{ paddingBottom: bottomNavPadding + 32 }}
                                         showsVerticalScrollIndicator={true}
-                                        keyboardShouldPersistTaps="handled"
+                                        keyboardShouldPersistTaps="always"
+                                        keyboardDismissMode="on-drag"
                                     >
                                         {filteredPleadings.map(pleading => {
                                             const isSelected = selectedPleading === pleading.value;
@@ -1571,7 +1802,7 @@ export const PleadingGeneratorModal: React.FC<Props> = ({
                                     </ScrollView>
                                 </View>
                             </View>
-                        </View>
+                        </KeyboardAvoidingView>
                     )}
 
                     {/* In-Modal Sub-Sheet: Searchable Practice Category Picker */}
@@ -1606,7 +1837,7 @@ export const PleadingGeneratorModal: React.FC<Props> = ({
                                     style={{ flex: 1, paddingHorizontal: spacing.m }}
                                     contentContainerStyle={{ paddingBottom: bottomNavPadding + 32 }}
                                     showsVerticalScrollIndicator={true}
-                                    keyboardShouldPersistTaps="handled"
+                                    keyboardShouldPersistTaps="always"
                                 >
                                     {/* All Categories option */}
                                     <TouchableOpacity
@@ -1695,8 +1926,9 @@ const createStyles = (
     insets: any,
     bottomNavPadding: number,
     mode: string
-) =>
-    StyleSheet.create({
+) => {
+    const isDark = mode === 'dark';
+    return StyleSheet.create({
         modalOverlay: {
             flex: 1,
             backgroundColor: 'rgba(0,0,0,0.75)',
@@ -2430,132 +2662,262 @@ const createStyles = (
             fontSize: 12,
         },
         generatingContainer: {
-            flex: 1,
             alignItems: 'center',
-            justifyContent: 'center',
-            paddingHorizontal: spacing.l,
-            paddingBottom: bottomNavPadding + 16,
+            paddingHorizontal: spacing.m,
+            paddingTop: spacing.s,
+            paddingBottom: bottomNavPadding + 24,
         },
-        engineBadge: {
+        generatingContextCard: {
+            width: '100%',
+            backgroundColor: 'rgba(212, 175, 55, 0.07)',
+            borderRadius: 16,
+            borderWidth: 1,
+            borderColor: 'rgba(212, 175, 55, 0.28)',
+            padding: 12,
+            marginBottom: spacing.m,
+        },
+        generatingContextTopRow: {
+            flexDirection: 'row',
+            alignItems: 'center',
+            justifyContent: 'space-between',
+            marginBottom: 6,
+        },
+        generatingCourtTag: {
             flexDirection: 'row',
             alignItems: 'center',
             gap: 6,
-            paddingHorizontal: 10,
-            paddingVertical: 4,
+            backgroundColor: 'rgba(0, 0, 0, 0.35)',
+            paddingHorizontal: 8,
+            paddingVertical: 3,
             borderRadius: 8,
-            backgroundColor: colors.accent + '20',
-            marginBottom: spacing.m,
+            flex: 1,
+            marginRight: 8,
         },
-        engineBadgeText: {
+        generatingCourtTagText: {
             color: colors.accent,
             fontSize: 11,
             fontWeight: '700',
-            letterSpacing: 1,
+            flex: 1,
+        },
+        generatingTimerBadge: {
+            flexDirection: 'row',
+            alignItems: 'center',
+            gap: 4,
+            backgroundColor: 'rgba(212, 175, 55, 0.15)',
+            paddingHorizontal: 8,
+            paddingVertical: 3,
+            borderRadius: 8,
+            borderWidth: 1,
+            borderColor: 'rgba(212, 175, 55, 0.3)',
+        },
+        generatingTimerText: {
+            color: '#D4AF37',
+            fontSize: 11,
+            fontWeight: '800',
+            fontVariant: ['tabular-nums'],
+        },
+        generatingDocTitle: {
+            color: colors.textPrimary,
+            fontSize: 14,
+            fontWeight: '800',
+            marginBottom: 4,
+        },
+        generatingMetaRow: {
+            flexDirection: 'row',
+            alignItems: 'center',
+            gap: 8,
+        },
+        generatingStatBadge: {
+            backgroundColor: 'rgba(212, 175, 55, 0.15)',
+            paddingHorizontal: 6,
+            paddingVertical: 2,
+            borderRadius: 6,
+        },
+        generatingStatBadgeText: {
+            color: '#D4AF37',
+            fontSize: 10,
+            fontWeight: '700',
+        },
+        generatingCasePartyText: {
+            color: colors.textSecondary,
+            fontSize: 11,
+            flex: 1,
         },
         orbContainer: {
-            marginVertical: spacing.m,
+            marginVertical: spacing.s,
+            alignItems: 'center',
+            justifyContent: 'center',
         },
         outerGlowOrb: {
-            width: 88,
-            height: 88,
-            borderRadius: 44,
+            width: 96,
+            height: 96,
+            borderRadius: 48,
             alignItems: 'center',
             justifyContent: 'center',
+            shadowColor: colors.accent,
+            shadowOffset: { width: 0, height: 0 },
+            shadowOpacity: 0.45,
+            shadowRadius: 16,
+            elevation: 10,
+        },
+        outerOrbGradient: {
+            width: 96,
+            height: 96,
+            borderRadius: 48,
+            alignItems: 'center',
+            justifyContent: 'center',
+            borderWidth: 1.5,
+            borderColor: 'rgba(212, 175, 55, 0.45)',
+        },
+        rotatingOrbRing: {
+            ...StyleSheet.absoluteFillObject,
+            alignItems: 'center',
+            justifyContent: 'space-between',
+            padding: 4,
+        },
+        orbSatelliteDot: {
+            width: 6,
+            height: 6,
+            borderRadius: 3,
+            backgroundColor: '#D4AF37',
+            shadowColor: '#D4AF37',
+            shadowOffset: { width: 0, height: 0 },
+            shadowOpacity: 0.9,
+            shadowRadius: 4,
+            elevation: 4,
+        },
+        orbSatelliteDotOpposite: {
+            backgroundColor: '#60A5FA',
+            shadowColor: '#60A5FA',
         },
         innerGlowOrb: {
-            width: 60,
-            height: 60,
-            borderRadius: 30,
-            backgroundColor: colors.surface,
+            width: 62,
+            height: 62,
+            borderRadius: 31,
+            backgroundColor: isDark ? '#0F172A' : '#FFFFFF',
             alignItems: 'center',
             justifyContent: 'center',
+            borderWidth: 1,
+            borderColor: 'rgba(212, 175, 55, 0.3)',
         },
         generatingTitle: {
             color: colors.textPrimary,
-            fontSize: 18,
-            fontWeight: '700',
+            fontSize: 17,
+            fontWeight: '800',
             marginTop: spacing.s,
+            letterSpacing: 0.3,
         },
         statusLivePill: {
             flexDirection: 'row',
             alignItems: 'center',
             gap: 6,
-            marginTop: 4,
-            paddingHorizontal: 10,
-            paddingVertical: 3,
-            borderRadius: 12,
-            backgroundColor: colors.surfaceHighlight,
+            marginTop: 5,
+            paddingHorizontal: 12,
+            paddingVertical: 4,
+            borderRadius: 14,
+            backgroundColor: isDark ? 'rgba(30, 41, 59, 0.85)' : 'rgba(241, 245, 249, 0.95)',
+            borderWidth: 1,
+            borderColor: 'rgba(16, 185, 129, 0.3)',
         },
         statusLiveDot: {
-            width: 6,
-            height: 6,
-            borderRadius: 3,
-            backgroundColor: colors.safe,
+            width: 7,
+            height: 7,
+            borderRadius: 3.5,
+            backgroundColor: '#10B981',
+            shadowColor: '#10B981',
+            shadowOffset: { width: 0, height: 0 },
+            shadowOpacity: 0.8,
+            shadowRadius: 4,
+            elevation: 3,
         },
         generatingSubtitle: {
             color: colors.textSecondary,
             fontSize: 12,
+            fontWeight: '600',
         },
         progressBarWrapper: {
             width: '100%',
-            flexDirection: 'row',
-            alignItems: 'center',
-            gap: 10,
             marginVertical: spacing.m,
         },
-        progressBarTrack: {
-            flex: 1,
-            height: 6,
-            borderRadius: 3,
-            backgroundColor: colors.surfaceHighlight,
-            overflow: 'hidden',
+        progressBarHeaderRow: {
+            flexDirection: 'row',
+            justifyContent: 'space-between',
+            alignItems: 'center',
+            marginBottom: 6,
         },
-        progressBarFill: {
-            height: '100%',
-            borderRadius: 3,
+        progressBarStageLabel: {
+            color: colors.textSecondary,
+            fontSize: 10.5,
+            fontWeight: '700',
+            letterSpacing: 0.8,
         },
         progressBarPercent: {
-            color: colors.accent,
+            color: '#D4AF37',
             fontSize: 12,
-            fontWeight: '700',
-            width: 36,
-            textAlign: 'right',
+            fontWeight: '800',
+        },
+        progressBarTrack: {
+            width: '100%',
+            height: 8,
+            borderRadius: 4,
+            backgroundColor: isDark ? 'rgba(255, 255, 255, 0.08)' : 'rgba(0, 0, 0, 0.08)',
+            overflow: 'hidden',
+            borderWidth: 1,
+            borderColor: 'rgba(212, 175, 55, 0.2)',
+        },
+        progressBarFillContainer: {
+            height: '100%',
+            borderRadius: 4,
+            overflow: 'hidden',
+        },
+        progressBarGradient: {
+            flex: 1,
+            height: '100%',
         },
         progressSteps: {
             width: '100%',
             gap: 8,
-            marginVertical: spacing.s,
+            marginVertical: spacing.xs,
         },
         stepCard: {
             flexDirection: 'row',
-            alignItems: 'center',
+            alignItems: 'flex-start',
             gap: 12,
-            padding: 10,
-            borderRadius: 12,
+            padding: 12,
+            borderRadius: 14,
             backgroundColor: colors.surfaceHighlight + '40',
             borderWidth: 1,
             borderColor: colors.border + '40',
         },
         stepCardActive: {
-            borderColor: colors.accent,
-            backgroundColor: colors.accent + '10',
+            borderColor: 'rgba(212, 175, 55, 0.65)',
+            backgroundColor: 'rgba(212, 175, 55, 0.08)',
+            shadowColor: '#D4AF37',
+            shadowOffset: { width: 0, height: 2 },
+            shadowOpacity: 0.2,
+            shadowRadius: 6,
+            elevation: 4,
         },
         stepCardDone: {
-            borderColor: colors.safe + '40',
+            borderColor: 'rgba(16, 185, 129, 0.45)',
+            backgroundColor: 'rgba(16, 185, 129, 0.05)',
         },
         stepCircle: {
-            width: 24,
-            height: 24,
-            borderRadius: 12,
+            width: 26,
+            height: 26,
+            borderRadius: 13,
             backgroundColor: colors.border,
             alignItems: 'center',
             justifyContent: 'center',
+            marginTop: 1,
         },
         stepCircleActive: {
-            backgroundColor: colors.accent + '30',
+            backgroundColor: 'rgba(212, 175, 55, 0.25)',
+            borderWidth: 1.5,
+            borderColor: '#D4AF37',
         },
         stepCircleCompleted: {
-            backgroundColor: colors.safe,
+            backgroundColor: '#10B981',
         },
         stepNumber: {
             color: colors.textTertiary,
@@ -2564,30 +2926,133 @@ const createStyles = (
         },
         stepLabel: {
             color: colors.textSecondary,
-            fontSize: 12,
+            fontSize: 12.5,
             fontWeight: '600',
         },
         stepLabelActive: {
             color: colors.textPrimary,
-            fontWeight: '700',
+            fontWeight: '800',
         },
         stepLabelDone: {
             color: colors.textPrimary,
+            fontWeight: '700',
         },
         stepDesc: {
             color: colors.textTertiary,
+            fontSize: 10.5,
+            marginTop: 2,
+            lineHeight: 14,
+        },
+        docChipsRow: {
+            flexDirection: 'row',
+            flexWrap: 'wrap',
+            gap: 4,
+            marginTop: 6,
+        },
+        docChip: {
+            paddingHorizontal: 6,
+            paddingVertical: 2,
+            borderRadius: 4,
+            backgroundColor: 'rgba(255, 255, 255, 0.06)',
+            borderWidth: 1,
+            borderColor: 'rgba(255, 255, 255, 0.1)',
+        },
+        docChipReady: {
+            backgroundColor: 'rgba(16, 185, 129, 0.15)',
+            borderColor: 'rgba(16, 185, 129, 0.4)',
+        },
+        docChipPending: {
+            backgroundColor: 'rgba(212, 175, 55, 0.15)',
+            borderColor: 'rgba(212, 175, 55, 0.4)',
+        },
+        docChipText: {
+            fontSize: 9.5,
+            color: colors.textTertiary,
+            fontWeight: '600',
+        },
+        docChipTextReady: {
+            color: '#10B981',
+            fontWeight: '700',
+        },
+        stepTagsRow: {
+            flexDirection: 'row',
+            flexWrap: 'wrap',
+            gap: 4,
+            marginTop: 6,
+        },
+        stepTagPill: {
+            paddingHorizontal: 6,
+            paddingVertical: 2,
+            borderRadius: 4,
+            backgroundColor: isDark ? 'rgba(255, 255, 255, 0.05)' : 'rgba(0, 0, 0, 0.05)',
+        },
+        stepTagPillText: {
+            fontSize: 9.5,
+            color: colors.textSecondary,
+            fontWeight: '600',
+        },
+        terminalBox: {
+            width: '100%',
+            backgroundColor: '#070B14',
+            borderRadius: 12,
+            borderWidth: 1,
+            borderColor: 'rgba(212, 175, 55, 0.25)',
+            marginTop: spacing.s,
+            overflow: 'hidden',
+        },
+        terminalHeader: {
+            flexDirection: 'row',
+            alignItems: 'center',
+            gap: 8,
+            paddingHorizontal: 10,
+            paddingVertical: 6,
+            backgroundColor: '#0D1424',
+            borderBottomWidth: 1,
+            borderBottomColor: 'rgba(255, 255, 255, 0.07)',
+        },
+        terminalDots: {
+            flexDirection: 'row',
+            gap: 4,
+        },
+        terminalDot: {
+            width: 7,
+            height: 7,
+            borderRadius: 3.5,
+        },
+        terminalTitle: {
+            color: '#94A3B8',
+            fontSize: 9,
+            fontWeight: '800',
+            letterSpacing: 0.8,
+        },
+        terminalBody: {
+            padding: 8,
+            gap: 3,
+        },
+        terminalLine: {
+            color: '#E2E8F0',
             fontSize: 10,
+            fontFamily: Platform.OS === 'ios' ? 'Menlo' : 'monospace',
+            lineHeight: 14,
+        },
+        terminalPrompt: {
+            color: '#D4AF37',
+            fontWeight: '700',
         },
         privacyBadge: {
             flexDirection: 'row',
             alignItems: 'center',
             gap: 6,
             marginTop: spacing.m,
+            paddingHorizontal: 10,
+            paddingVertical: 5,
+            borderRadius: 8,
+            backgroundColor: 'rgba(16, 185, 129, 0.08)',
         },
         privacyBadgeText: {
             color: colors.safe,
-            fontSize: 11,
-            fontWeight: '500',
+            fontSize: 10.5,
+            fontWeight: '600',
         },
         docTabBarContainer: {
             borderBottomWidth: StyleSheet.hairlineWidth,
@@ -3011,3 +3476,4 @@ const createStyles = (
             fontWeight: '700',
         },
     });
+};

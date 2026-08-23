@@ -131,15 +131,26 @@ export const parseECourtsText = (rawText: string): ParsedECourtsTextResult => {
     let petitionerName = '';
     let petitionerAdvocate = '';
 
+    const cleanPartyName = (raw: string): string => {
+        if (!raw) return '';
+        let cleaned = raw
+            .replace(/^(?:A\s*[-–]?\s*\d+|\d+[\)\.\-]|Accused\s*No\.?\s*\d+|Petitioner\s*No\.?\s*\d+|Respondent\s*No\.?\s*\d+)\s*/i, '')
+            .replace(/^(?:Mr\.|Mrs\.|Ms\.|Dr\.|Thiru|Tmt\.)\s*/i, '')
+            .replace(/Advocate[\s\-\:]+.*$/i, '')
+            .replace(/\s+/g, ' ')
+            .trim();
+        return cleaned;
+    };
+
     const petBlock = text.match(/(?:Petitioner(?:\s*and\s*Advocate(?:\s*Details)?)?\s*[:\-\s]*)([\s\S]*?)(?=Respondent|Act|FIR|Case History|Case Status|$)/i);
     if (petBlock && petBlock[1]) {
         const lines = petBlock[1].split('\n').map(l => l.trim()).filter(l => l && !l.toLowerCase().startsWith('qr code'));
         for (const line of lines) {
-            const cleanLine = line.replace(/^\d+[\)\.\-]\s*/, '').trim();
+            const cleanLine = cleanPartyName(line);
             if (cleanLine && !cleanLine.toLowerCase().includes('advocate') && !petitionerName) {
                 petitionerName = cleanLine;
-            } else if (cleanLine.toLowerCase().includes('advocate') || cleanLine.toLowerCase().includes('bar')) {
-                petitionerAdvocate = cleanLine.replace(/advocate\s*[:\-\s]*/i, '').trim();
+            } else if (line.toLowerCase().includes('advocate') || line.toLowerCase().includes('bar')) {
+                petitionerAdvocate = line.replace(/advocate\s*[:\-\s]*/i, '').trim();
             }
         }
     }
@@ -147,7 +158,7 @@ export const parseECourtsText = (rawText: string): ParsedECourtsTextResult => {
     if (!petitionerName) {
         const petMatch = text.match(/(?:Petitioner(?:\s*Details)?\s*[:\-\s]?\s*)(?:1\)\s*)?([^\n\r]+)/i);
         if (petMatch && petMatch[1]) {
-            const clean = petMatch[1].replace(/Advocate[\s\-\:]+.*$/i, '').trim();
+            const clean = cleanPartyName(petMatch[1]);
             if (clean && clean.toLowerCase() !== 'and advocate') {
                 petitionerName = clean;
             }
@@ -162,11 +173,11 @@ export const parseECourtsText = (rawText: string): ParsedECourtsTextResult => {
     if (respBlock && respBlock[1]) {
         const lines = respBlock[1].split('\n').map(l => l.trim()).filter(l => l && !l.toLowerCase().startsWith('qr code'));
         for (const line of lines) {
-            const cleanLine = line.replace(/^\d+[\)\.\-]\s*/, '').trim();
+            const cleanLine = cleanPartyName(line);
             if (cleanLine && !cleanLine.toLowerCase().includes('advocate') && !respondentName) {
                 respondentName = cleanLine;
-            } else if (cleanLine.toLowerCase().includes('advocate') || cleanLine.toLowerCase().includes('bar')) {
-                respondentAdvocate = cleanLine.replace(/advocate\s*[:\-\s]*/i, '').trim();
+            } else if (line.toLowerCase().includes('advocate') || line.toLowerCase().includes('bar')) {
+                respondentAdvocate = line.replace(/advocate\s*[:\-\s]*/i, '').trim();
             }
         }
     }
@@ -174,8 +185,8 @@ export const parseECourtsText = (rawText: string): ParsedECourtsTextResult => {
     // Quick check for "X vs. Y" format in raw text
     const vsMatch = text.match(/([A-Za-z0-9\.\s\,\&]+?)\s+(?:vs\.?|v\.|versus)\s+([A-Za-z0-9\.\s\,\&]+)/i);
     if (vsMatch && !petitionerName) {
-        petitionerName = vsMatch[1].trim();
-        respondentName = vsMatch[2].split('\n')[0].trim();
+        petitionerName = cleanPartyName(vsMatch[1]);
+        respondentName = cleanPartyName(vsMatch[2].split('\n')[0]);
     }
 
     // 5. Extract Next Hearing Date & Purpose

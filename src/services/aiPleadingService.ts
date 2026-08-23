@@ -326,6 +326,22 @@ export const generatePleadingPaperbook = async (
         const rawText = data.choices?.[0]?.message?.content || '';
 
         const sections = parsePaperbookTags(rawText);
+        const fallback = generateOfflineSamplePaperbook(params);
+
+        // Guaranteed fallback so no section (especially Vakalatnama and Affidavit) is ever blank
+        if (!sections.vakalat || sections.vakalat.trim().length < 40) {
+            sections.vakalat = fallback.sections.vakalat;
+        }
+        if (!sections.affidavit || sections.affidavit.trim().length < 40) {
+            sections.affidavit = fallback.sections.affidavit;
+        }
+        if (!sections.synopsis || sections.synopsis.trim().length < 40) {
+            sections.synopsis = fallback.sections.synopsis;
+        }
+        if (!sections.petition || sections.petition.trim().length < 40) {
+            sections.petition = fallback.sections.petition;
+        }
+
         const indexItems = generateDefaultIndexItems(params, sections);
 
         return {
@@ -521,8 +537,6 @@ ${caseNo}
 In the matter of:
 
 ${clientName},
-aged about 34 years,
-S/o. / D/o. / W/o. ________________,
 Residing at ${clientAddress}.
                                                         ... Petitioner / Deponent
 
@@ -532,24 +546,26 @@ Residing at ${clientAddress}.
    The Inspector of Police,
    Police Station,
    ${tierInfo.city}.
-   (Crime No. ____ of 2026)
+   (Crime No. ${caseData.caseNumber || '____ of 2026'})
                                                         ... 1st Respondent / Complainant
 
 2. The De-facto Complainant,
-   residing at the address in records.
+   residing at the address mentioned in records.
                                                         ... 2nd Respondent
 
 SUPPORTING VERIFICATION AFFIDAVIT OF THE PETITIONER
 
 I, ${clientName}, residing at ${clientAddress}, do hereby solemnly affirm and sincerely state as follows:
 
-1. I am the Petitioner / Deponent herein and I am fully conversant with the facts of the case.
+1. I am the Petitioner / Deponent herein, fully conversant with the facts and circumstances of the present case, and competent to swear to this Affidavit.
 
-2. I have read and understood the contents of the accompanying Memorandum of Petition and I state that the facts narrated therein are true and correct to the best of my knowledge, information, and belief.
+2. I state that I have preferred the accompanying Memorandum of ${pleadingInfo.label} under ${pleadingInfo.statutoryRef} before this Hon'ble Court. I have read and understood the factual averments and legal submissions made in the accompanying Petition and state that the facts narrated therein are true and correct to the best of my knowledge, information, and belief.
 
-3. I state that no prior application or petition has been filed by me before this Hon'ble Court or any other Subordinate Court seeking the same or similar relief.
+3. I state that the present proceedings pertain to ${caseData.name}${caseData.description ? ` wherein ${caseData.description}` : ''}. The statutory provisions invoked are ${sectionsList}. I am a law-abiding citizen with deep roots in society.
 
-4. I therefore pray that this Hon'ble Court may be pleased to accept this affidavit and allow the accompanying petition as prayed for and thus render justice.
+4. I state that no prior application or petition has been filed by me before this Hon'ble Court or any other Court seeking the same or similar relief in respect of the present subject matter.
+
+5. I therefore pray that this Hon'ble Court may be pleased to accept this supporting affidavit, allow the accompanying petition as prayed for, and pass suitable protective orders in the interest of justice.
 
 Solemnly affirmed at ${tierInfo.city}
 on this ${todayStr}
@@ -570,7 +586,7 @@ THE STATE REP. BY INSPECTOR OF POLICE & ANOTHER         ... Respondents
 
 VAKALATNAMA / MEMORANDUM OF APPEARANCE
 
-I, ${clientName}, the Petitioner in the above matter, do hereby nominate, constitute, and appoint:
+I, ${clientName}, the Petitioner / Accused in the above matter, do hereby nominate, constitute, and appoint:
 
 ${advocateName}, Advocate
 Enrolment No.: ${barEnrolment}

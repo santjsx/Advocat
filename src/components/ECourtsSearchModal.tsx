@@ -845,6 +845,19 @@ export const ECourtsSearchModal: React.FC<Props> = ({
                                                 </Text>
                                             ) : null}
                                         </View>
+                                        <TouchableOpacity
+                                            style={styles.inlineEditNameBtn}
+                                            onPress={() => {
+                                                Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
+                                                setCustomClientName(searchResult.petitioner?.name || '');
+                                                setClientSide('CUSTOM');
+                                                setShowCustomInput(true);
+                                            }}
+                                            hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
+                                        >
+                                            <Ionicons name="pencil" size={13} color="#D4AF37" />
+                                            <Text style={styles.inlineEditNameText}>Edit</Text>
+                                        </TouchableOpacity>
                                     </SmoothPressable>
 
                                     {/* OPTION B: Respondent / Accused / Defendant */}
@@ -891,6 +904,19 @@ export const ECourtsSearchModal: React.FC<Props> = ({
                                                 </Text>
                                             ) : null}
                                         </View>
+                                        <TouchableOpacity
+                                            style={styles.inlineEditNameBtn}
+                                            onPress={() => {
+                                                Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
+                                                setCustomClientName(searchResult.respondent?.name || '');
+                                                setClientSide('CUSTOM');
+                                                setShowCustomInput(true);
+                                            }}
+                                            hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
+                                        >
+                                            <Ionicons name="pencil" size={13} color="#D4AF37" />
+                                            <Text style={styles.inlineEditNameText}>Edit</Text>
+                                        </TouchableOpacity>
                                     </SmoothPressable>
 
                                     {/* OPTION C: Specific Client Name / Co-Accused */}
@@ -901,6 +927,13 @@ export const ECourtsSearchModal: React.FC<Props> = ({
                                         ]}
                                         onPress={() => {
                                             Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
+                                            if (!customClientName.trim()) {
+                                                setCustomClientName(
+                                                    clientSide === 'RESPONDENT'
+                                                        ? (searchResult.respondent?.name || '')
+                                                        : (searchResult.petitioner?.name || '')
+                                                );
+                                            }
                                             setClientSide('CUSTOM');
                                             setShowCustomInput(true);
                                         }}
@@ -940,7 +973,7 @@ export const ECourtsSearchModal: React.FC<Props> = ({
                                             <Text style={styles.customInputLabel}>Client Full Name *</Text>
                                             <TextInput
                                                 style={styles.customInput}
-                                                placeholder="e.g., A-2 Rajesh Kumar / Intervenor"
+                                                placeholder="e.g., Mule Santhosh Reddy / Co-Accused"
                                                 placeholderTextColor={colors.textTertiary}
                                                 value={customClientName}
                                                 onChangeText={setCustomClientName}
@@ -979,30 +1012,30 @@ export const ECourtsSearchModal: React.FC<Props> = ({
                             {/* Extraction Audit & Transparency Summary */}
                             <View style={styles.auditContainer}>
                                 <View style={styles.auditHeaderRow}>
-                                    <MaterialCommunityIcons name="clipboard-check-outline" size={13} color="#D4AF37" />
-                                    <Text style={styles.auditHeaderText}>EXTRACTION AUDIT REPORT</Text>
+                                    <MaterialCommunityIcons name="shield-check-outline" size={14} color="#D4AF37" />
+                                    <Text style={styles.auditHeaderText}>EXTRACTION ACCURACY & AUDIT</Text>
                                 </View>
                                 <View style={styles.auditGrid}>
                                     {/* Detected items */}
                                     <View style={styles.auditSection}>
-                                        <Text style={styles.auditDetectedTitle}>✓ Detected from Screenshot:</Text>
-                                        {searchResult.petitioner?.name ? (
-                                            <Text style={styles.auditItemDetected}>• Petitioner: {searchResult.petitioner.name}</Text>
-                                        ) : null}
-                                        {searchResult.respondent?.name ? (
-                                            <Text style={styles.auditItemDetected}>• Respondent: {searchResult.respondent.name}</Text>
-                                        ) : null}
+                                        <Text style={styles.auditDetectedTitle}>✓ Extracted Verified Case Data:</Text>
                                         {searchResult.caseNumber ? (
                                             <Text style={styles.auditItemDetected}>• Case No: {searchResult.caseNumber}</Text>
                                         ) : null}
                                         {searchResult.courtName ? (
                                             <Text style={styles.auditItemDetected}>• Court: {searchResult.courtName}</Text>
                                         ) : null}
-                                        {searchResult.nextHearing?.date ? (
-                                            <Text style={styles.auditItemDetected}>• Next Date: {dayjs(searchResult.nextHearing.date).format('DD/MM/YYYY')}</Text>
+                                        {searchResult.petitioner?.name ? (
+                                            <Text style={styles.auditItemDetected}>• Petitioner: {searchResult.petitioner.name}</Text>
                                         ) : null}
-                                        {searchResult.cnr ? (
-                                            <Text style={styles.auditItemDetected}>• CNR: {searchResult.cnr}</Text>
+                                        {searchResult.respondent?.name ? (
+                                            <Text style={styles.auditItemDetected}>• Respondent: {searchResult.respondent.name}</Text>
+                                        ) : null}
+                                        {searchResult.firDetails?.firNumber ? (
+                                            <Text style={styles.auditItemDetected}>• FIR: {searchResult.firDetails.firNumber} ({searchResult.firDetails.policeStation || 'Station'})</Text>
+                                        ) : null}
+                                        {searchResult.nextHearing?.date ? (
+                                            <Text style={styles.auditItemDetected}>• Next Date: {searchResult.nextHearing.date} ({searchResult.nextHearing.purpose || 'Hearing'})</Text>
                                         ) : null}
                                     </View>
 
@@ -1027,7 +1060,7 @@ export const ECourtsSearchModal: React.FC<Props> = ({
                                 </View>
                             </View>
 
-                            {/* Primary Import CTA with dynamic Client tag */}
+                            {/* Primary Import CTA with clean structured hierarchy */}
                             <SmoothPressable
                                 style={styles.importActionBtn}
                                 onPress={handleImport}
@@ -1040,10 +1073,16 @@ export const ECourtsSearchModal: React.FC<Props> = ({
                                     end={{ x: 1, y: 0 }}
                                     style={styles.importActionGradient}
                                 >
-                                    <MaterialCommunityIcons name="download-box" size={18} color="#000000" />
-                                    <Text style={styles.importActionText} numberOfLines={1}>
-                                        Import Case (Client: {clientSide === 'CUSTOM' ? (customClientName.trim() || 'Specific Client') : clientSide === 'RESPONDENT' ? (searchResult.respondent?.name || 'Respondent') : (searchResult.petitioner?.name || 'Petitioner')})
-                                    </Text>
+                                    <View style={styles.importActionIconCircle}>
+                                        <MaterialCommunityIcons name="download-box" size={20} color="#000000" />
+                                    </View>
+                                    <View style={styles.importActionContent}>
+                                        <Text style={styles.importActionTitle}>Import Case to Chambers</Text>
+                                        <Text style={styles.importActionSubtitle} numberOfLines={1} ellipsizeMode="tail">
+                                            Client: {clientSide === 'CUSTOM' ? (customClientName.trim() || 'Specific Client') : clientSide === 'RESPONDENT' ? (searchResult.respondent?.name || 'Respondent') : (searchResult.petitioner?.name || 'Petitioner')}
+                                        </Text>
+                                    </View>
+                                    <Ionicons name="arrow-forward-circle" size={22} color="#000000" style={{ opacity: 0.85 }} />
                                 </LinearGradient>
                             </SmoothPressable>
                         </View>
@@ -2033,21 +2072,63 @@ const createStyles = (colors: any, spacing: any, isDark: boolean) =>
             lineHeight: 16,
             paddingLeft: 4,
         },
+        inlineEditNameBtn: {
+            flexDirection: 'row',
+            alignItems: 'center',
+            gap: 4,
+            paddingHorizontal: 8,
+            paddingVertical: 4,
+            borderRadius: 6,
+            backgroundColor: 'rgba(212, 175, 55, 0.12)',
+            borderWidth: 1,
+            borderColor: 'rgba(212, 175, 55, 0.3)',
+            alignSelf: 'center',
+        },
+        inlineEditNameText: {
+            color: '#D4AF37',
+            fontSize: 11,
+            fontWeight: '700',
+        },
         importActionBtn: {
-            borderRadius: 12,
+            borderRadius: 14,
             overflow: 'hidden',
+            marginTop: 6,
+            marginBottom: 20,
+            shadowColor: '#D4AF37',
+            shadowOffset: { width: 0, height: 4 },
+            shadowOpacity: 0.35,
+            shadowRadius: 8,
+            elevation: 6,
         },
         importActionGradient: {
             flexDirection: 'row',
             alignItems: 'center',
-            justifyContent: 'center',
-            gap: 8,
-            paddingVertical: 14,
+            paddingVertical: 12,
+            paddingHorizontal: 16,
+            gap: 12,
         },
-        importActionText: {
+        importActionIconCircle: {
+            width: 36,
+            height: 36,
+            borderRadius: 18,
+            backgroundColor: 'rgba(0, 0, 0, 0.12)',
+            alignItems: 'center',
+            justifyContent: 'center',
+        },
+        importActionContent: {
+            flex: 1,
+            justifyContent: 'center',
+        },
+        importActionTitle: {
             color: '#000000',
-            fontSize: 14,
+            fontSize: 15,
             fontWeight: '800',
             letterSpacing: 0.2,
+        },
+        importActionSubtitle: {
+            color: 'rgba(0, 0, 0, 0.75)',
+            fontSize: 12,
+            fontWeight: '600',
+            marginTop: 1,
         },
     });
