@@ -823,24 +823,24 @@ export const PleadingGeneratorModal: React.FC<Props> = ({
                     </View>
 
                     <View style={styles.header}>
-                        <View style={{ flexDirection: 'row', alignItems: 'flex-start', gap: 10, flex: 1, paddingRight: 8 }}>
-                            <View style={[styles.iconContainer, { marginTop: 2 }]}>
-                                <MaterialCommunityIcons name="scale-balance" size={22} color={colors.accent} />
+                        <View style={{ flexDirection: 'row', alignItems: 'center', gap: 10, flex: 1, paddingRight: 8 }}>
+                            <View style={styles.iconContainer}>
+                                <MaterialCommunityIcons name="scale-balance" size={20} color={colors.accent} />
                             </View>
                             <View style={{ flex: 1 }}>
-                                <Text style={styles.title}>Court Drafting Chambers</Text>
-                                <Text style={styles.subtitle}>
+                                <Text style={styles.title} numberOfLines={1}>Court Drafting Chambers</Text>
+                                <Text style={styles.subtitle} numberOfLines={1}>
                                     {caseData.name}
                                 </Text>
-                                {caseData.caseNumber ? (
-                                    <View style={styles.headerCaseNumberPill}>
-                                        <Text style={styles.headerCaseNumberText}>{caseData.caseNumber}</Text>
-                                    </View>
-                                ) : null}
                             </View>
+                            {caseData.caseNumber ? (
+                                <View style={styles.headerCaseNumberPill}>
+                                    <Text style={styles.headerCaseNumberText}>{caseData.caseNumber}</Text>
+                                </View>
+                            ) : null}
                         </View>
                         <TouchableOpacity onPress={onClose} style={styles.closeBtn} hitSlop={{ top: 10, bottom: 10, left: 10, right: 10 }} accessibilityLabel="Close modal">
-                            <Ionicons name="close" size={20} color={colors.critical} />
+                            <Ionicons name="close" size={18} color={colors.textSecondary} />
                         </TouchableOpacity>
                     </View>
 
@@ -1114,7 +1114,7 @@ export const PleadingGeneratorModal: React.FC<Props> = ({
                             contentContainerStyle={styles.generatingContainer}
                             showsVerticalScrollIndicator={false}
                         >
-                            {/* 1. Live Filing Context Summary Banner */}
+                            {/* 1. Sleek Minimal Filing Summary Card */}
                             <View style={styles.generatingContextCard}>
                                 <View style={styles.generatingContextTopRow}>
                                     <View style={styles.generatingCourtTag}>
@@ -1124,111 +1124,79 @@ export const PleadingGeneratorModal: React.FC<Props> = ({
                                         </Text>
                                     </View>
                                     <View style={styles.generatingTimerBadge}>
-                                        <Ionicons name="timer-outline" size={13} color="#D4AF37" />
+                                        <Ionicons name="timer-outline" size={12} color={colors.accent} />
                                         <Text style={styles.generatingTimerText}>
                                             {elapsedSeconds < 10 ? `00:0${elapsedSeconds}` : `00:${elapsedSeconds}`}s
                                         </Text>
                                     </View>
                                 </View>
 
-                                <Text style={styles.generatingDocTitle} numberOfLines={1}>
-                                    {activePleadingInfo.label}
-                                </Text>
-
-                                <View style={styles.generatingMetaRow}>
-                                    <View style={styles.generatingStatBadge}>
-                                        <Text style={styles.generatingStatBadgeText}>{activePleadingInfo.statutoryRef}</Text>
+                                <View style={styles.generatingContextMainRow}>
+                                    <View style={{ flex: 1 }}>
+                                        <Text style={styles.generatingDocTitle} numberOfLines={1}>
+                                            {activePleadingInfo.label}
+                                        </Text>
+                                        <Text style={styles.generatingCasePartyText} numberOfLines={1}>
+                                            {activePleadingInfo.statutoryRef} • {caseData.client?.name || caseData.clientName || caseData.name}
+                                        </Text>
                                     </View>
-                                    <Text style={styles.generatingCasePartyText} numberOfLines={1}>
-                                        {caseData.client?.name ? `Client: ${caseData.client.name}` : caseData.name}
-                                    </Text>
                                 </View>
                             </View>
 
-                            {/* 2. Animated Pulsing Judicial Engine Reactor Core */}
-                            <View style={styles.orbContainer}>
-                                <Animated.View style={[styles.outerGlowOrb, { transform: [{ scale: pulseGlowAnim }] }]}>
-                                    <LinearGradient
-                                        colors={['rgba(212, 175, 55, 0.25)', 'rgba(59, 130, 246, 0.12)', 'rgba(0, 0, 0, 0.4)']}
-                                        style={styles.outerOrbGradient}
-                                    >
-                                        <Animated.View
-                                            style={[
-                                                styles.rotatingOrbRing,
-                                                {
-                                                    transform: [
-                                                        {
-                                                            rotate: spinAnim.interpolate({
-                                                                inputRange: [0, 1],
-                                                                outputRange: ['0deg', '360deg'],
-                                                            }),
-                                                        },
-                                                    ],
-                                                },
-                                            ]}
-                                        >
-                                            <View style={styles.orbSatelliteDot} />
-                                            <View style={[styles.orbSatelliteDot, styles.orbSatelliteDotOpposite]} />
-                                        </Animated.View>
-
-                                        <View style={styles.innerGlowOrb}>
-                                            <MaterialCommunityIcons name="scale-balance" size={26} color={colors.accent} />
-                                            <ActivityIndicator size="small" color={colors.accent} style={{ marginTop: 2 }} />
-                                        </View>
-                                    </LinearGradient>
-                                </Animated.View>
-                            </View>
-
-                            {/* 3. Title & Live Active Status Pill */}
-                            <Text style={styles.generatingTitle}>Compiling Legal Paperbook</Text>
-                            <View style={styles.statusLivePill}>
-                                <View style={styles.statusLiveDot} />
-                                <Text style={styles.generatingSubtitle} numberOfLines={1}>{progressStatus}</Text>
-                            </View>
-
-                            {/* 4. Ultra-Premium Glowing Progress Bar */}
-                            <View style={styles.progressBarWrapper}>
-                                <View style={styles.progressBarHeaderRow}>
-                                    <Text style={styles.progressBarStageLabel}>
-                                        STAGE {currentStepIndex} OF 4 • {currentStepIndex === 1 ? 'STATUTORY AUDIT' : currentStepIndex === 2 ? 'AI DRAFTING' : currentStepIndex === 3 ? 'DOCX COMPILATION' : 'BUNDLE READY'}
-                                    </Text>
-                                    <Text style={styles.progressBarPercent}>{progressPercent}%</Text>
-                                </View>
-                                <View style={styles.progressBarTrack}>
-                                    <Animated.View
-                                        style={[
-                                            styles.progressBarFillContainer,
-                                            {
-                                                width: generatingProgressAnim.interpolate({
-                                                    inputRange: [0, 1],
-                                                    outputRange: ['0%', '100%'],
-                                                }),
-                                            },
-                                        ]}
-                                    >
-                                        <LinearGradient
-                                            colors={['#F59E0B', '#D4AF37', '#FDE047']}
-                                            start={{ x: 0, y: 0 }}
-                                            end={{ x: 1, y: 0 }}
-                                            style={styles.progressBarGradient}
-                                        />
+                            {/* 2. Sleek Minimal Animated Loader & Progress Header */}
+                            <View style={styles.generatingProgressHeader}>
+                                <View style={styles.generatingLoaderRow}>
+                                    <Animated.View style={[styles.compactOrb, { transform: [{ scale: pulseGlowAnim }] }]}>
+                                        <MaterialCommunityIcons name="scale-balance" size={20} color={colors.accent} />
                                     </Animated.View>
+                                    <View style={{ flex: 1 }}>
+                                        <View style={styles.progressLabelRow}>
+                                            <Text style={styles.progressBarStageLabel}>
+                                                STAGE {currentStepIndex} OF 4 • {currentStepIndex === 1 ? 'STATUTORY AUDIT' : currentStepIndex === 2 ? 'AI DRAFTING' : currentStepIndex === 3 ? 'DOCX COMPILATION' : 'BUNDLE READY'}
+                                            </Text>
+                                            <Text style={styles.progressBarPercent}>{progressPercent}%</Text>
+                                        </View>
+                                        <View style={styles.progressBarTrack}>
+                                            <Animated.View
+                                                style={[
+                                                    styles.progressBarFillContainer,
+                                                    {
+                                                        width: generatingProgressAnim.interpolate({
+                                                            inputRange: [0, 1],
+                                                            outputRange: ['0%', '100%'],
+                                                        }),
+                                                    },
+                                                ]}
+                                            >
+                                                <LinearGradient
+                                                    colors={['#D4AF37', '#F59E0B']}
+                                                    start={{ x: 0, y: 0 }}
+                                                    end={{ x: 1, y: 0 }}
+                                                    style={styles.progressBarGradient}
+                                                />
+                                            </Animated.View>
+                                        </View>
+                                    </View>
+                                </View>
+
+                                <View style={styles.statusLiveRow}>
+                                    <View style={styles.statusLiveDot} />
+                                    <Text style={styles.generatingSubtitle} numberOfLines={1}>{progressStatus}</Text>
                                 </View>
                             </View>
 
-                            {/* 5. Refined 4-Step Progression Stack Cards */}
-                            <View style={styles.progressSteps}>
+                            {/* 3. Clean Vertical Step Timeline */}
+                            <View style={styles.timelineContainer}>
                                 {[
                                     {
                                         step: 1,
-                                        label: 'Statutory Verification (BNS/BNSS/CPC)',
-                                        desc: `Checking procedural rules & ${activeCourtInfo.shortName} jurisdiction`,
-                                        tags: ['Procedural Rules', `Bench: ${activeCourtInfo.city}`],
+                                        label: 'Statutory & Jurisdiction Audit',
+                                        desc: `BNS/BNSS procedural compliance & ${activeCourtInfo.shortName} verification`,
                                     },
                                     {
                                         step: 2,
                                         label: 'Drafting 5-Document Stack',
-                                        desc: 'Index, Synopsis, Petition, Supporting Affidavit & Vakalatnama',
+                                        desc: 'Index, Synopsis, Petition, Affidavit & Vakalatnama',
                                         docChips: [
                                             { name: '1. Index', isReady: currentStepIndex >= 2 },
                                             { name: '2. Synopsis', isReady: currentStepIndex >= 2 },
@@ -1239,37 +1207,59 @@ export const PleadingGeneratorModal: React.FC<Props> = ({
                                     },
                                     {
                                         step: 3,
-                                        label: 'Madras HC DOCX Compilation',
-                                        desc: '1.75" left margins, double spacing, docket & bar welfare stamp blocks',
-                                        tags: ['1.75" Left Margin', 'Court Double Spacing', 'Backsheet Docket'],
+                                        label: 'High Court DOCX Formatting',
+                                        desc: '1.75" left filing margin, double spacing, bar welfare stamp blocks',
                                     },
                                     {
                                         step: 4,
-                                        label: 'Ready for Court Filing',
-                                        desc: 'Finalized offline Word bundle saved locally with synchronized index pages',
-                                        tags: ['Offline Document', 'Ready for Print / E-Filing'],
+                                        label: 'Finalized Paperbook Bundle',
+                                        desc: 'Offline Word (.docx) package with synchronized page index',
                                     },
-                                ].map(s => {
+                                ].map((s, index, arr) => {
                                     const isDone = currentStepIndex > s.step;
                                     const isCurrent = currentStepIndex === s.step;
+                                    const isLast = index === arr.length - 1;
+
                                     return (
-                                        <View key={s.step} style={[styles.stepCard, isCurrent && styles.stepCardActive, isDone && styles.stepCardDone]}>
-                                            <View style={[styles.stepCircle, isCurrent && styles.stepCircleActive, isDone && styles.stepCircleCompleted]}>
-                                                {isDone ? (
-                                                    <Ionicons name="checkmark" size={13} color="#000000" />
-                                                ) : isCurrent ? (
-                                                    <ActivityIndicator size="small" color={colors.accent} />
-                                                ) : (
-                                                    <Text style={styles.stepNumber}>{s.step}</Text>
+                                        <View key={s.step} style={styles.timelineItem}>
+                                            <View style={styles.timelineLeftCol}>
+                                                <View style={[
+                                                    styles.stepCircle,
+                                                    isCurrent && styles.stepCircleActive,
+                                                    isDone && styles.stepCircleCompleted,
+                                                ]}>
+                                                    {isDone ? (
+                                                        <Ionicons name="checkmark" size={13} color="#000000" />
+                                                    ) : isCurrent ? (
+                                                        <ActivityIndicator size="small" color={colors.accent} />
+                                                    ) : (
+                                                        <Text style={styles.stepNumber}>{s.step}</Text>
+                                                    )}
+                                                </View>
+                                                {!isLast && (
+                                                    <View style={[
+                                                        styles.timelineLine,
+                                                        isDone && styles.timelineLineDone,
+                                                    ]} />
                                                 )}
                                             </View>
-                                            <View style={{ flex: 1 }}>
-                                                <Text style={[styles.stepLabel, isCurrent && styles.stepLabelActive, isDone && styles.stepLabelDone]}>
-                                                    {s.label}
-                                                </Text>
+
+                                            <View style={[styles.timelineContent, isCurrent && styles.timelineContentActive]}>
+                                                <View style={styles.timelineTextRow}>
+                                                    <Text style={[
+                                                        styles.stepLabel,
+                                                        isCurrent && styles.stepLabelActive,
+                                                        isDone && styles.stepLabelDone,
+                                                    ]}>
+                                                        {s.label}
+                                                    </Text>
+                                                    {isDone && (
+                                                        <Text style={styles.stepDoneStatusText}>Verified</Text>
+                                                    )}
+                                                </View>
                                                 <Text style={styles.stepDesc} numberOfLines={1}>{s.desc}</Text>
 
-                                                {/* Step 2 Live Document Chips */}
+                                                {/* Clean Minimal Inline Document Chips for Step 2 */}
                                                 {s.docChips && (
                                                     <View style={styles.docChipsRow}>
                                                         {s.docChips.map((chip, cIdx) => (
@@ -1293,38 +1283,26 @@ export const PleadingGeneratorModal: React.FC<Props> = ({
                                                         ))}
                                                     </View>
                                                 )}
-
-                                                {/* Micro Tags */}
-                                                {s.tags && (
-                                                    <View style={styles.stepTagsRow}>
-                                                        {s.tags.map((tag, tIdx) => (
-                                                            <View key={tIdx} style={styles.stepTagPill}>
-                                                                <Text style={styles.stepTagPillText}>{tag}</Text>
-                                                            </View>
-                                                        ))}
-                                                    </View>
-                                                )}
                                             </View>
                                         </View>
                                     );
                                 })}
                             </View>
 
-                            {/* 6. Live Compiler Micro-Terminal */}
+                            {/* 4. Minimalist Live Telemetry Stream */}
                             {compilationLogs.length > 0 && (
                                 <View style={styles.terminalBox}>
                                     <View style={styles.terminalHeader}>
-                                        <View style={styles.terminalDots}>
-                                            <View style={[styles.terminalDot, { backgroundColor: '#EF4444' }]} />
-                                            <View style={[styles.terminalDot, { backgroundColor: '#F59E0B' }]} />
-                                            <View style={[styles.terminalDot, { backgroundColor: '#10B981' }]} />
+                                        <View style={styles.terminalLiveIndicator}>
+                                            <View style={styles.terminalLiveDot} />
+                                            <Text style={styles.terminalTitle}>LIVE TELEMETRY</Text>
                                         </View>
-                                        <Text style={styles.terminalTitle}>LEGAL ENGINE COMPILER STREAM</Text>
+                                        <Text style={styles.terminalCountText}>{compilationLogs.length} events</Text>
                                     </View>
                                     <View style={styles.terminalBody}>
-                                        {compilationLogs.slice(-3).map((log, lIdx) => (
+                                        {compilationLogs.slice(-2).map((log, lIdx) => (
                                             <Text key={lIdx} style={styles.terminalLine} numberOfLines={1}>
-                                                <Text style={styles.terminalPrompt}>❯ </Text>
+                                                <Text style={styles.terminalPrompt}>• </Text>
                                                 {log}
                                             </Text>
                                         ))}
@@ -1332,10 +1310,10 @@ export const PleadingGeneratorModal: React.FC<Props> = ({
                                 </View>
                             )}
 
-                            {/* 7. Bottom Privacy & Security Badge */}
+                            {/* 5. Minimal Security & Encryption Trust Seal */}
                             <View style={styles.privacyBadge}>
-                                <MaterialCommunityIcons name="shield-lock-outline" size={14} color={colors.safe} />
-                                <Text style={styles.privacyBadgeText}>100% On-Device DOCX Assembly • Encrypted Chamber Storage</Text>
+                                <MaterialCommunityIcons name="shield-check-outline" size={13} color={colors.safe} />
+                                <Text style={styles.privacyBadgeText}>100% On-Device DOCX Assembly • Encrypted Storage</Text>
                             </View>
                         </ScrollView>
                     )}
@@ -2044,14 +2022,14 @@ const createStyles = (
             fontWeight: '700',
         },
         closeBtn: {
-            width: 34,
-            height: 34,
-            borderRadius: 17,
-            backgroundColor: colors.critical + '18',
+            width: 32,
+            height: 32,
+            borderRadius: 16,
+            backgroundColor: colors.surfaceHighlight,
             alignItems: 'center',
             justifyContent: 'center',
-            borderWidth: 1.2,
-            borderColor: colors.critical + '45',
+            borderWidth: 1,
+            borderColor: colors.border,
         },
         body: {
             flex: 1,
@@ -2662,17 +2640,16 @@ const createStyles = (
             fontSize: 12,
         },
         generatingContainer: {
-            alignItems: 'center',
             paddingHorizontal: spacing.m,
             paddingTop: spacing.s,
             paddingBottom: bottomNavPadding + 24,
         },
         generatingContextCard: {
             width: '100%',
-            backgroundColor: 'rgba(212, 175, 55, 0.07)',
-            borderRadius: 16,
+            backgroundColor: colors.surfaceHighlight,
+            borderRadius: 14,
             borderWidth: 1,
-            borderColor: 'rgba(212, 175, 55, 0.28)',
+            borderColor: colors.border,
             padding: 12,
             marginBottom: spacing.m,
         },
@@ -2686,10 +2663,10 @@ const createStyles = (
             flexDirection: 'row',
             alignItems: 'center',
             gap: 6,
-            backgroundColor: 'rgba(0, 0, 0, 0.35)',
+            backgroundColor: colors.accent + '15',
             paddingHorizontal: 8,
             paddingVertical: 3,
-            borderRadius: 8,
+            borderRadius: 6,
             flex: 1,
             marginRight: 8,
         },
@@ -2703,143 +2680,60 @@ const createStyles = (
             flexDirection: 'row',
             alignItems: 'center',
             gap: 4,
-            backgroundColor: 'rgba(212, 175, 55, 0.15)',
-            paddingHorizontal: 8,
+            backgroundColor: colors.surface,
+            paddingHorizontal: 7,
             paddingVertical: 3,
-            borderRadius: 8,
+            borderRadius: 6,
             borderWidth: 1,
-            borderColor: 'rgba(212, 175, 55, 0.3)',
+            borderColor: colors.border,
         },
         generatingTimerText: {
-            color: '#D4AF37',
+            color: colors.accent,
             fontSize: 11,
-            fontWeight: '800',
+            fontWeight: '700',
             fontVariant: ['tabular-nums'],
+        },
+        generatingContextMainRow: {
+            flexDirection: 'row',
+            alignItems: 'center',
+            justifyContent: 'space-between',
         },
         generatingDocTitle: {
             color: colors.textPrimary,
             fontSize: 14,
-            fontWeight: '800',
-            marginBottom: 4,
-        },
-        generatingMetaRow: {
-            flexDirection: 'row',
-            alignItems: 'center',
-            gap: 8,
-        },
-        generatingStatBadge: {
-            backgroundColor: 'rgba(212, 175, 55, 0.15)',
-            paddingHorizontal: 6,
-            paddingVertical: 2,
-            borderRadius: 6,
-        },
-        generatingStatBadgeText: {
-            color: '#D4AF37',
-            fontSize: 10,
             fontWeight: '700',
+            letterSpacing: 0.2,
         },
         generatingCasePartyText: {
             color: colors.textSecondary,
-            fontSize: 11,
-            flex: 1,
+            fontSize: 11.5,
+            marginTop: 2,
         },
-        orbContainer: {
-            marginVertical: spacing.s,
+        generatingProgressHeader: {
+            width: '100%',
+            backgroundColor: colors.surfaceHighlight + '70',
+            borderRadius: 16,
+            borderWidth: 1,
+            borderColor: colors.border + '80',
+            padding: 14,
+            marginBottom: spacing.m,
+        },
+        generatingLoaderRow: {
+            flexDirection: 'row',
             alignItems: 'center',
-            justifyContent: 'center',
+            gap: 12,
         },
-        outerGlowOrb: {
-            width: 96,
-            height: 96,
-            borderRadius: 48,
-            alignItems: 'center',
-            justifyContent: 'center',
-            shadowColor: colors.accent,
-            shadowOffset: { width: 0, height: 0 },
-            shadowOpacity: 0.45,
-            shadowRadius: 16,
-            elevation: 10,
-        },
-        outerOrbGradient: {
-            width: 96,
-            height: 96,
-            borderRadius: 48,
+        compactOrb: {
+            width: 42,
+            height: 42,
+            borderRadius: 21,
+            backgroundColor: colors.accent + '18',
             alignItems: 'center',
             justifyContent: 'center',
             borderWidth: 1.5,
-            borderColor: 'rgba(212, 175, 55, 0.45)',
+            borderColor: colors.accent + '40',
         },
-        rotatingOrbRing: {
-            ...StyleSheet.absoluteFillObject,
-            alignItems: 'center',
-            justifyContent: 'space-between',
-            padding: 4,
-        },
-        orbSatelliteDot: {
-            width: 6,
-            height: 6,
-            borderRadius: 3,
-            backgroundColor: '#D4AF37',
-            shadowColor: '#D4AF37',
-            shadowOffset: { width: 0, height: 0 },
-            shadowOpacity: 0.9,
-            shadowRadius: 4,
-            elevation: 4,
-        },
-        orbSatelliteDotOpposite: {
-            backgroundColor: '#60A5FA',
-            shadowColor: '#60A5FA',
-        },
-        innerGlowOrb: {
-            width: 62,
-            height: 62,
-            borderRadius: 31,
-            backgroundColor: isDark ? '#0F172A' : '#FFFFFF',
-            alignItems: 'center',
-            justifyContent: 'center',
-            borderWidth: 1,
-            borderColor: 'rgba(212, 175, 55, 0.3)',
-        },
-        generatingTitle: {
-            color: colors.textPrimary,
-            fontSize: 17,
-            fontWeight: '800',
-            marginTop: spacing.s,
-            letterSpacing: 0.3,
-        },
-        statusLivePill: {
-            flexDirection: 'row',
-            alignItems: 'center',
-            gap: 6,
-            marginTop: 5,
-            paddingHorizontal: 12,
-            paddingVertical: 4,
-            borderRadius: 14,
-            backgroundColor: isDark ? 'rgba(30, 41, 59, 0.85)' : 'rgba(241, 245, 249, 0.95)',
-            borderWidth: 1,
-            borderColor: 'rgba(16, 185, 129, 0.3)',
-        },
-        statusLiveDot: {
-            width: 7,
-            height: 7,
-            borderRadius: 3.5,
-            backgroundColor: '#10B981',
-            shadowColor: '#10B981',
-            shadowOffset: { width: 0, height: 0 },
-            shadowOpacity: 0.8,
-            shadowRadius: 4,
-            elevation: 3,
-        },
-        generatingSubtitle: {
-            color: colors.textSecondary,
-            fontSize: 12,
-            fontWeight: '600',
-        },
-        progressBarWrapper: {
-            width: '100%',
-            marginVertical: spacing.m,
-        },
-        progressBarHeaderRow: {
+        progressLabelRow: {
             flexDirection: 'row',
             justifyContent: 'space-between',
             alignItems: 'center',
@@ -2847,82 +2741,116 @@ const createStyles = (
         },
         progressBarStageLabel: {
             color: colors.textSecondary,
-            fontSize: 10.5,
+            fontSize: 10,
             fontWeight: '700',
-            letterSpacing: 0.8,
+            letterSpacing: 0.6,
         },
         progressBarPercent: {
-            color: '#D4AF37',
+            color: colors.accent,
             fontSize: 12,
             fontWeight: '800',
+            fontVariant: ['tabular-nums'],
         },
         progressBarTrack: {
             width: '100%',
-            height: 8,
-            borderRadius: 4,
+            height: 5,
+            borderRadius: 3,
             backgroundColor: isDark ? 'rgba(255, 255, 255, 0.08)' : 'rgba(0, 0, 0, 0.08)',
             overflow: 'hidden',
-            borderWidth: 1,
-            borderColor: 'rgba(212, 175, 55, 0.2)',
         },
         progressBarFillContainer: {
             height: '100%',
-            borderRadius: 4,
+            borderRadius: 3,
             overflow: 'hidden',
         },
         progressBarGradient: {
             flex: 1,
             height: '100%',
         },
-        progressSteps: {
-            width: '100%',
-            gap: 8,
-            marginVertical: spacing.xs,
-        },
-        stepCard: {
+        statusLiveRow: {
             flexDirection: 'row',
-            alignItems: 'flex-start',
-            gap: 12,
-            padding: 12,
-            borderRadius: 14,
+            alignItems: 'center',
+            gap: 6,
+            marginTop: 10,
+            paddingTop: 8,
+            borderTopWidth: StyleSheet.hairlineWidth,
+            borderTopColor: colors.border + '60',
+        },
+        statusLiveDot: {
+            width: 6,
+            height: 6,
+            borderRadius: 3,
+            backgroundColor: colors.safe,
+        },
+        generatingSubtitle: {
+            color: colors.textPrimary,
+            fontSize: 11.5,
+            fontWeight: '600',
+            flex: 1,
+        },
+        timelineContainer: {
+            width: '100%',
             backgroundColor: colors.surfaceHighlight + '40',
+            borderRadius: 16,
             borderWidth: 1,
-            borderColor: colors.border + '40',
+            borderColor: colors.border + '60',
+            paddingVertical: 12,
+            paddingHorizontal: 14,
+            marginBottom: spacing.m,
         },
-        stepCardActive: {
-            borderColor: 'rgba(212, 175, 55, 0.65)',
-            backgroundColor: 'rgba(212, 175, 55, 0.08)',
-            shadowColor: '#D4AF37',
-            shadowOffset: { width: 0, height: 2 },
-            shadowOpacity: 0.2,
-            shadowRadius: 6,
-            elevation: 4,
+        timelineItem: {
+            flexDirection: 'row',
+            minHeight: 48,
         },
-        stepCardDone: {
-            borderColor: 'rgba(16, 185, 129, 0.45)',
-            backgroundColor: 'rgba(16, 185, 129, 0.05)',
+        timelineLeftCol: {
+            alignItems: 'center',
+            width: 28,
+            marginRight: 10,
         },
         stepCircle: {
-            width: 26,
-            height: 26,
-            borderRadius: 13,
-            backgroundColor: colors.border,
+            width: 24,
+            height: 24,
+            borderRadius: 12,
+            backgroundColor: colors.surface,
             alignItems: 'center',
             justifyContent: 'center',
-            marginTop: 1,
+            borderWidth: 1.5,
+            borderColor: colors.border,
+            zIndex: 2,
         },
         stepCircleActive: {
-            backgroundColor: 'rgba(212, 175, 55, 0.25)',
-            borderWidth: 1.5,
-            borderColor: '#D4AF37',
+            backgroundColor: colors.accent + '20',
+            borderColor: colors.accent,
         },
         stepCircleCompleted: {
-            backgroundColor: '#10B981',
+            backgroundColor: colors.safe,
+            borderColor: colors.safe,
         },
         stepNumber: {
             color: colors.textTertiary,
-            fontSize: 11,
+            fontSize: 10.5,
             fontWeight: '700',
+        },
+        timelineLine: {
+            width: 1.5,
+            flex: 1,
+            backgroundColor: colors.border + '60',
+            marginVertical: 3,
+        },
+        timelineLineDone: {
+            backgroundColor: colors.safe + '80',
+        },
+        timelineContent: {
+            flex: 1,
+            paddingBottom: 14,
+        },
+        timelineContentActive: {
+            opacity: 1,
+        },
+        timelineTextRow: {
+            flexDirection: 'row',
+            alignItems: 'center',
+            justifyContent: 'space-between',
         },
         stepLabel: {
             color: colors.textSecondary,
@@ -2931,17 +2859,24 @@ const createStyles = (
         },
         stepLabelActive: {
             color: colors.textPrimary,
-            fontWeight: '800',
+            fontWeight: '700',
         },
         stepLabelDone: {
             color: colors.textPrimary,
+            fontWeight: '600',
+        },
+        stepDoneStatusText: {
+            color: colors.safe,
+            fontSize: 10,
             fontWeight: '700',
+            textTransform: 'uppercase',
+            letterSpacing: 0.5,
         },
         stepDesc: {
             color: colors.textTertiary,
-            fontSize: 10.5,
+            fontSize: 11,
             marginTop: 2,
-            lineHeight: 14,
+            lineHeight: 15,
         },
         docChipsRow: {
             flexDirection: 'row',
@@ -2953,17 +2888,17 @@ const createStyles = (
             paddingHorizontal: 6,
             paddingVertical: 2,
             borderRadius: 4,
-            backgroundColor: 'rgba(255, 255, 255, 0.06)',
+            backgroundColor: colors.surface,
             borderWidth: 1,
-            borderColor: 'rgba(255, 255, 255, 0.1)',
+            borderColor: colors.border,
         },
         docChipReady: {
-            backgroundColor: 'rgba(16, 185, 129, 0.15)',
-            borderColor: 'rgba(16, 185, 129, 0.4)',
+            backgroundColor: colors.safe + '15',
+            borderColor: colors.safe + '40',
         },
         docChipPending: {
-            backgroundColor: 'rgba(212, 175, 55, 0.15)',
-            borderColor: 'rgba(212, 175, 55, 0.4)',
+            backgroundColor: colors.accent + '15',
+            borderColor: colors.accent + '40',
         },
         docChipText: {
             fontSize: 9.5,
@@ -2971,88 +2906,74 @@ const createStyles = (
             fontWeight: '600',
         },
         docChipTextReady: {
-            color: '#10B981',
+            color: colors.safe,
             fontWeight: '700',
-        },
-        stepTagsRow: {
-            flexDirection: 'row',
-            flexWrap: 'wrap',
-            gap: 4,
-            marginTop: 6,
-        },
-        stepTagPill: {
-            paddingHorizontal: 6,
-            paddingVertical: 2,
-            borderRadius: 4,
-            backgroundColor: isDark ? 'rgba(255, 255, 255, 0.05)' : 'rgba(0, 0, 0, 0.05)',
-        },
-        stepTagPillText: {
-            fontSize: 9.5,
-            color: colors.textSecondary,
-            fontWeight: '600',
         },
         terminalBox: {
             width: '100%',
-            backgroundColor: '#070B14',
+            backgroundColor: colors.surfaceHighlight + '90',
             borderRadius: 12,
             borderWidth: 1,
-            borderColor: 'rgba(212, 175, 55, 0.25)',
-            marginTop: spacing.s,
+            borderColor: colors.border,
             overflow: 'hidden',
+            marginBottom: spacing.m,
         },
         terminalHeader: {
             flexDirection: 'row',
             alignItems: 'center',
-            gap: 8,
+            justifyContent: 'space-between',
             paddingHorizontal: 10,
             paddingVertical: 6,
-            backgroundColor: '#0D1424',
-            borderBottomWidth: 1,
-            borderBottomColor: 'rgba(255, 255, 255, 0.07)',
+            borderBottomWidth: StyleSheet.hairlineWidth,
+            borderBottomColor: colors.border + '60',
+            backgroundColor: colors.surfaceHighlight,
         },
-        terminalDots: {
+        terminalLiveIndicator: {
             flexDirection: 'row',
-            gap: 4,
+            alignItems: 'center',
+            gap: 6,
         },
-        terminalDot: {
-            width: 7,
-            height: 7,
-            borderRadius: 3.5,
+        terminalLiveDot: {
+            width: 6,
+            height: 6,
+            borderRadius: 3,
+            backgroundColor: colors.accent,
         },
         terminalTitle: {
-            color: '#94A3B8',
-            fontSize: 9,
-            fontWeight: '800',
-            letterSpacing: 0.8,
+            color: colors.textSecondary,
+            fontSize: 9.5,
+            fontWeight: '700',
+            letterSpacing: 0.6,
+        },
+        terminalCountText: {
+            color: colors.textTertiary,
+            fontSize: 9.5,
         },
         terminalBody: {
             padding: 8,
             gap: 3,
         },
         terminalLine: {
-            color: '#E2E8F0',
-            fontSize: 10,
+            color: colors.textSecondary,
+            fontSize: 10.5,
             fontFamily: Platform.OS === 'ios' ? 'Menlo' : 'monospace',
-            lineHeight: 14,
+            lineHeight: 15,
         },
         terminalPrompt: {
-            color: '#D4AF37',
+            color: colors.accent,
             fontWeight: '700',
         },
         privacyBadge: {
             flexDirection: 'row',
             alignItems: 'center',
-            gap: 6,
-            marginTop: spacing.m,
-            paddingHorizontal: 10,
-            paddingVertical: 5,
-            borderRadius: 8,
-            backgroundColor: 'rgba(16, 185, 129, 0.08)',
+            justifyContent: 'center',
+            gap: 5,
+            paddingVertical: 4,
         },
         privacyBadgeText: {
-            color: colors.safe,
+            color: colors.textTertiary,
             fontSize: 10.5,
-            fontWeight: '600',
+            fontWeight: '500',
         },
         docTabBarContainer: {
             borderBottomWidth: StyleSheet.hairlineWidth,
