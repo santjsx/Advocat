@@ -18,6 +18,7 @@ import { SmoothPressable } from '../components/SmoothPressable';
 import { DeadlineItem } from '../components/DeadlineItem';
 import { ECourtsSearchModal } from '../components/ECourtsSearchModal';
 import { PleadingGeneratorModal } from '../components/PleadingGeneratorModal';
+import { Case } from '../models/Case';
 import { useTheme } from '../theme/ThemeContext';
 import dayjs from 'dayjs';
 import { NativeStackScreenProps } from '@react-navigation/native-stack';
@@ -45,7 +46,7 @@ export const DashboardScreen: React.FC<Props> = ({ navigation }) => {
     const [isRefreshing, setIsRefreshing] = useState(false);
     const [showECourtsModal, setShowECourtsModal] = useState(false);
     const [showPleadingModal, setShowPleadingModal] = useState(false);
-    const [selectedCaseForDraft, setSelectedCaseForDraft] = useState<any>(null);
+    const [selectedCaseForDraft, setSelectedCaseForDraft] = useState<Case | null>(null);
 
     // Filter and compute executive legal stats
     const stats = useMemo(() => {
@@ -116,13 +117,23 @@ export const DashboardScreen: React.FC<Props> = ({ navigation }) => {
     }, []);
 
     const handleDraftQuickPaperbook = React.useCallback(() => {
-        const targetCase = cases.find(c => c.status === 'ACTIVE') || cases[0] || {
+        const targetCase: Case = cases.find(c => c.status === 'ACTIVE') || cases[0] || {
             id: 'quick-draft',
-            name: 'State vs Accused',
-            caseNumber: 'Crl.O.P. No.         / 2026',
-            clientName: 'Petitioner',
+            name: 'State vs. Accused',
+            caseNumber: 'Crl.O.P. No. 18492 of 2026',
+            client: {
+                name: 'Petitioner / Accused',
+            },
+            courtName: 'High Court of Judicature at Madras',
+            caseType: 'CRIMINAL',
+            stage: 'PLEADING',
+            filingDate: new Date().toISOString(),
             status: 'ACTIVE',
-            court: 'Madras High Court',
+            sections: [],
+            notes: [],
+            timeline: [],
+            createdAt: new Date().toISOString(),
+            updatedAt: new Date().toISOString(),
         };
         setSelectedCaseForDraft(targetCase);
         setShowPleadingModal(true);
@@ -363,7 +374,7 @@ export const DashboardScreen: React.FC<Props> = ({ navigation }) => {
 
                     <SmoothPressable
                         style={styles.launchpadBtn}
-                        onPress={() => setShowPleadingModal(true)}
+                        onPress={handleDraftQuickPaperbook}
                         haptic="medium"
                         scaleTo={0.94}
                     >
