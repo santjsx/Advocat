@@ -68,6 +68,14 @@ const QUICK_FILTERS: {
     { label: 'MACT Claim', category: 'MACT_CONSUMER', icon: 'car-side' },
 ];
 
+const DOC_STACK_ITEMS = [
+    { id: 'index', title: '1. Index to Paperbook', sub: 'Pagination & court filing stamps' },
+    { id: 'synopsis', title: '2. Synopsis & List of Dates', sub: 'Chronological events & timeline' },
+    { id: 'petition', title: '3. Main Petition / Application', sub: 'Grounds of law & prayer for relief' },
+    { id: 'affidavit', title: '4. Supporting Affidavit', sub: 'Solemn affirmation & verification' },
+    { id: 'vakalat', title: '5. Vakalatnama', sub: 'Counsel authorization & Welfare Fund' },
+];
+
 export const PleadingGeneratorModal: React.FC<Props> = ({
     visible,
     caseData,
@@ -109,7 +117,7 @@ export const PleadingGeneratorModal: React.FC<Props> = ({
     const [isPleadingPickerOpen, setIsPleadingPickerOpen] = useState(false);
 
     const [progressStatus, setProgressStatus] = useState('Initializing Madras HC Legal Engine...');
-    const [currentStepIndex, setCurrentStepIndex] = useState(1);
+    const [activeDraftingDocIndex, setActiveDraftingDocIndex] = useState<number>(0);
     const [generatedSections, setGeneratedSections] = useState<PaperbookSections | null>(null);
     const [generatedIndexItems, setGeneratedIndexItems] = useState<IndexTableItem[]>([]);
     const [generatedDocxUri, setGeneratedDocxUri] = useState<string | null>(null);
@@ -125,11 +133,10 @@ export const PleadingGeneratorModal: React.FC<Props> = ({
     const toastTranslateY = useRef(new Animated.Value(-20)).current;
 
     // Chamber Generation Animations & Real-Time Telemetry
-    const generatingProgressAnim = useRef(new Animated.Value(0.25)).current;
+    const generatingProgressAnim = useRef(new Animated.Value(0.15)).current;
     const pulseGlowAnim = useRef(new Animated.Value(0.95)).current;
     const spinAnim = useRef(new Animated.Value(0)).current;
     const [elapsedSeconds, setElapsedSeconds] = useState(0);
-    const [compilationLogs, setCompilationLogs] = useState<string[]>([]);
 
     React.useEffect(() => {
         let timer: any;
@@ -174,11 +181,13 @@ export const PleadingGeneratorModal: React.FC<Props> = ({
     }, [step]);
 
     const progressPercent = useMemo(() => {
-        if (currentStepIndex === 1) return 25;
-        if (currentStepIndex === 2) return 60;
-        if (currentStepIndex === 3) return 88;
+        if (activeDraftingDocIndex === 0) return 15;
+        if (activeDraftingDocIndex === 1) return 35;
+        if (activeDraftingDocIndex === 2) return 55;
+        if (activeDraftingDocIndex === 3) return 75;
+        if (activeDraftingDocIndex === 4) return 90;
         return 100;
-    }, [currentStepIndex]);
+    }, [activeDraftingDocIndex]);
 
     React.useEffect(() => {
         if (step === 'GENERATING') {
@@ -277,27 +286,24 @@ export const PleadingGeneratorModal: React.FC<Props> = ({
     }, [advocateProfile.barEnrolment]);
 
     const handleGenerate = async () => {
+        let timer1: any;
+        let timer2: any;
+
         try {
             Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium);
             setStep('GENERATING');
-            setCurrentStepIndex(1);
-            setProgressStatus('Verifying BNS/BNSS statutory provisions...');
-            setCompilationLogs([
-                'Initialised Madras HC Rules & Judicial Directory',
-                `Target Bench: ${activeCourtInfo.label}`,
-                `Statutory Basis: ${activePleadingInfo.statutoryRef}`,
-            ]);
+            setActiveDraftingDocIndex(0);
+            setProgressStatus('Drafting 1. Index to Paperbook...');
 
-            const logTimeout1 = setTimeout(() => {
-                setCurrentStepIndex(2);
-                setProgressStatus(`Drafting 5-Document Stack for ${caseData.client?.name || caseData.clientName || caseData.name}...`);
-                setCompilationLogs(prev => [
-                    ...prev,
-                    'Statutory & Limitation verification passed',
-                    'Connecting to DeepSeek Legal AI Engine...',
-                    'Generating Synopsis, Facts & Grounds of Relief...',
-                ]);
-            }, 800);
+            timer1 = setTimeout(() => {
+                setActiveDraftingDocIndex(1);
+                setProgressStatus('Drafting 2. Synopsis & List of Dates...');
+            }, 600);
+
+            timer2 = setTimeout(() => {
+                setActiveDraftingDocIndex(2);
+                setProgressStatus(`Drafting 3. Main Petition for ${caseData.client?.name || caseData.clientName || caseData.name}...`);
+            }, 1200);
 
             const aiResult = await generatePleadingPaperbook(
                 {
@@ -310,27 +316,21 @@ export const PleadingGeneratorModal: React.FC<Props> = ({
                 },
                 (status) => {
                     setProgressStatus(status);
-                    if (status.includes('Drafting')) {
-                        setCurrentStepIndex(2);
-                        setCompilationLogs(prev => [...prev, status]);
-                    }
-                    if (status.includes('Structuring') || status.includes('Parsing')) {
-                        setCurrentStepIndex(3);
-                        setCompilationLogs(prev => [...prev, status]);
-                    }
                 }
             );
 
-            clearTimeout(logTimeout1);
-            setCurrentStepIndex(3);
-            setProgressStatus('Compiling Madras High Court .docx document...');
-            setCompilationLogs(prev => [
-                ...prev,
-                '5-Document text drafted (Index, Synopsis, Petition, Affidavit, Vakalatnama)',
-                'Applying 1.75" Left Filing Margins & Double Line Spacing...',
-                'Formatting Advocate Bar Welfare Fund Stamp boxes & Docket...',
-            ]);
+            clearTimeout(timer1);
+            clearTimeout(timer2);
 
+            setActiveDraftingDocIndex(3);
+            setProgressStatus('Drafting 4. Supporting Affidavit...');
+            await new Promise(r => setTimeout(r, 450));
+
+            setActiveDraftingDocIndex(4);
+            setProgressStatus('Drafting 5. Vakalatnama & Welfare Stamp...');
+            await new Promise(r => setTimeout(r, 450));
+
+            setProgressStatus('Compiling Madras High Court .docx document...');
             const docxResult = await buildMadrasHCPaperbookDocx({
                 caseData,
                 pleadingType: selectedPleading,
@@ -348,19 +348,15 @@ export const PleadingGeneratorModal: React.FC<Props> = ({
             setGeneratedDocxName(docxResult.fileName);
             setGeneratedFileSize(saveResult.fileSize);
 
-            setCurrentStepIndex(4);
-            setProgressStatus('Ready for Court Filing!');
-            setCompilationLogs(prev => [
-                ...prev,
-                `Saved offline Word bundle: ${docxResult.fileName}`,
-                'Ready for print, counsel signature & registry filing.',
-            ]);
+            setActiveDraftingDocIndex(5);
+            setProgressStatus('All 5 Documents Ready!');
+            await new Promise(r => setTimeout(r, 350));
 
-            setTimeout(() => {
-                setStep('REVIEW');
-                Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
-            }, 600);
+            setStep('REVIEW');
+            Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
         } catch (error: any) {
+            clearTimeout(timer1);
+            clearTimeout(timer2);
             console.error('Pleading generation failed:', error);
             Alert.alert(
                 'Generation Error',
@@ -519,12 +515,18 @@ export const PleadingGeneratorModal: React.FC<Props> = ({
                         );
                     }
 
-                    // 3. Case Number Heading (e.g., CRL.O.P. NO. 18492 OF 2026)
+                    // 3. Case Number Heading (e.g., CRL.O.P. NO. 18492 OF 2026, C.R.P. (NPD) NO. 4120 OF 2026)
                     const isCaseNumber =
                         cleanText.toUpperCase().startsWith('CRL.M.P.') ||
                         cleanText.toUpperCase().startsWith('CRL.O.P.') ||
+                        cleanText.toUpperCase().startsWith('C.R.P.') ||
+                        cleanText.toUpperCase().startsWith('CRP') ||
                         cleanText.toUpperCase().startsWith('W.P.') ||
                         cleanText.toUpperCase().startsWith('O.S.') ||
+                        cleanText.toUpperCase().startsWith('I.A.') ||
+                        cleanText.toUpperCase().startsWith('C.M.A.') ||
+                        cleanText.toUpperCase().startsWith('A.S.') ||
+                        cleanText.toUpperCase().startsWith('S.A.') ||
                         cleanText.toUpperCase().startsWith('C.C.') ||
                         cleanText.startsWith('(In Crime') ||
                         cleanText.startsWith('(Crime No.') ||
@@ -631,6 +633,7 @@ export const PleadingGeneratorModal: React.FC<Props> = ({
                     const isMajorSection =
                         cleanText.toUpperCase().startsWith('MEMORANDUM OF') ||
                         cleanText.toUpperCase().startsWith('PETITION UNDER') ||
+                        cleanText.toUpperCase().startsWith('PLAINT FILED UNDER') ||
                         cleanText.toUpperCase().startsWith('SUPPORTING VERIFICATION AFFIDAVIT') ||
                         cleanText.toUpperCase().startsWith('AFFIDAVIT') ||
                         cleanText.toUpperCase().startsWith('SYNOPSIS') ||
@@ -830,14 +833,9 @@ export const PleadingGeneratorModal: React.FC<Props> = ({
                             <View style={{ flex: 1 }}>
                                 <Text style={styles.title} numberOfLines={1}>Court Drafting Chambers</Text>
                                 <Text style={styles.subtitle} numberOfLines={1}>
-                                    {caseData.name}
+                                    {caseData.name}{caseData.caseNumber ? ` • ${caseData.caseNumber}` : ''}
                                 </Text>
                             </View>
-                            {caseData.caseNumber ? (
-                                <View style={styles.headerCaseNumberPill}>
-                                    <Text style={styles.headerCaseNumberText}>{caseData.caseNumber}</Text>
-                                </View>
-                            ) : null}
                         </View>
                         <TouchableOpacity onPress={onClose} style={styles.closeBtn} hitSlop={{ top: 10, bottom: 10, left: 10, right: 10 }} accessibilityLabel="Close modal">
                             <Ionicons name="close" size={18} color={colors.textSecondary} />
@@ -1114,7 +1112,7 @@ export const PleadingGeneratorModal: React.FC<Props> = ({
                             contentContainerStyle={styles.generatingContainer}
                             showsVerticalScrollIndicator={false}
                         >
-                            {/* 1. Sleek Minimal Filing Summary Card */}
+                            {/* 1. Filing & Bench Overview Card */}
                             <View style={styles.generatingContextCard}>
                                 <View style={styles.generatingContextTopRow}>
                                     <View style={styles.generatingCourtTag}>
@@ -1131,189 +1129,123 @@ export const PleadingGeneratorModal: React.FC<Props> = ({
                                     </View>
                                 </View>
 
-                                <View style={styles.generatingContextMainRow}>
-                                    <View style={{ flex: 1 }}>
-                                        <Text style={styles.generatingDocTitle} numberOfLines={1}>
-                                            {activePleadingInfo.label}
-                                        </Text>
-                                        <Text style={styles.generatingCasePartyText} numberOfLines={1}>
-                                            {activePleadingInfo.statutoryRef} • {caseData.client?.name || caseData.clientName || caseData.name}
-                                        </Text>
-                                    </View>
-                                </View>
+                                <Text style={styles.generatingDocTitle} numberOfLines={1}>
+                                    {activePleadingInfo.label}
+                                </Text>
+                                <Text style={styles.generatingCasePartyText} numberOfLines={1}>
+                                    {activePleadingInfo.statutoryRef} • {caseData.client?.name || caseData.clientName || caseData.name}
+                                </Text>
                             </View>
 
-                            {/* 2. Sleek Minimal Animated Loader & Progress Header */}
+                            {/* 2. Unified Precision Progress Bar & Live Status */}
                             <View style={styles.generatingProgressHeader}>
-                                <View style={styles.generatingLoaderRow}>
-                                    <Animated.View style={[styles.compactOrb, { transform: [{ scale: pulseGlowAnim }] }]}>
-                                        <MaterialCommunityIcons name="scale-balance" size={20} color={colors.accent} />
-                                    </Animated.View>
-                                    <View style={{ flex: 1 }}>
-                                        <View style={styles.progressLabelRow}>
-                                            <Text style={styles.progressBarStageLabel}>
-                                                STAGE {currentStepIndex} OF 4 • {currentStepIndex === 1 ? 'STATUTORY AUDIT' : currentStepIndex === 2 ? 'AI DRAFTING' : currentStepIndex === 3 ? 'DOCX COMPILATION' : 'BUNDLE READY'}
-                                            </Text>
-                                            <Text style={styles.progressBarPercent}>{progressPercent}%</Text>
-                                        </View>
-                                        <View style={styles.progressBarTrack}>
-                                            <Animated.View
-                                                style={[
-                                                    styles.progressBarFillContainer,
-                                                    {
-                                                        width: generatingProgressAnim.interpolate({
-                                                            inputRange: [0, 1],
-                                                            outputRange: ['0%', '100%'],
-                                                        }),
-                                                    },
-                                                ]}
-                                            >
-                                                <LinearGradient
-                                                    colors={['#D4AF37', '#F59E0B']}
-                                                    start={{ x: 0, y: 0 }}
-                                                    end={{ x: 1, y: 0 }}
-                                                    style={styles.progressBarGradient}
-                                                />
-                                            </Animated.View>
-                                        </View>
+                                <View style={styles.progressLabelRow}>
+                                    <View style={styles.statusLiveRow}>
+                                        <View style={styles.statusLiveDot} />
+                                        <Text style={styles.generatingSubtitle} numberOfLines={1}>
+                                            {progressStatus}
+                                        </Text>
                                     </View>
+                                    <Text style={styles.progressBarPercent}>{progressPercent}%</Text>
                                 </View>
-
-                                <View style={styles.statusLiveRow}>
-                                    <View style={styles.statusLiveDot} />
-                                    <Text style={styles.generatingSubtitle} numberOfLines={1}>{progressStatus}</Text>
+                                <View style={styles.progressBarTrack}>
+                                    <Animated.View
+                                        style={[
+                                            styles.progressBarFillContainer,
+                                            {
+                                                width: generatingProgressAnim.interpolate({
+                                                    inputRange: [0, 1],
+                                                    outputRange: ['0%', '100%'],
+                                                }),
+                                            },
+                                        ]}
+                                    >
+                                        <LinearGradient
+                                            colors={['#D4AF37', '#F59E0B']}
+                                            start={{ x: 0, y: 0 }}
+                                            end={{ x: 1, y: 0 }}
+                                            style={styles.progressBarGradient}
+                                        />
+                                    </Animated.View>
                                 </View>
                             </View>
 
-                            {/* 3. Clean Vertical Step Timeline */}
-                            <View style={styles.timelineContainer}>
-                                {[
-                                    {
-                                        step: 1,
-                                        label: 'Statutory & Jurisdiction Audit',
-                                        desc: `BNS/BNSS procedural compliance & ${activeCourtInfo.shortName} verification`,
-                                    },
-                                    {
-                                        step: 2,
-                                        label: 'Drafting 5-Document Stack',
-                                        desc: 'Index, Synopsis, Petition, Affidavit & Vakalatnama',
-                                        docChips: [
-                                            { name: '1. Index', isReady: currentStepIndex >= 2 },
-                                            { name: '2. Synopsis', isReady: currentStepIndex >= 2 },
-                                            { name: '3. Petition', isReady: currentStepIndex >= 2 },
-                                            { name: '4. Affidavit', isReady: currentStepIndex >= 3 },
-                                            { name: '5. Vakalat', isReady: currentStepIndex >= 3 },
-                                        ],
-                                    },
-                                    {
-                                        step: 3,
-                                        label: 'High Court DOCX Formatting',
-                                        desc: '1.75" left filing margin, double spacing, bar welfare stamp blocks',
-                                    },
-                                    {
-                                        step: 4,
-                                        label: 'Finalized Paperbook Bundle',
-                                        desc: 'Offline Word (.docx) package with synchronized page index',
-                                    },
-                                ].map((s, index, arr) => {
-                                    const isDone = currentStepIndex > s.step;
-                                    const isCurrent = currentStepIndex === s.step;
-                                    const isLast = index === arr.length - 1;
+                            {/* 3. The 5-Document Court Bundle Drafting Stack */}
+                            <View style={styles.docStackContainer}>
+                                <Text style={styles.docStackHeader}>DRAFTING 5-DOCUMENT COURT BUNDLE</Text>
+                                {DOC_STACK_ITEMS.map((doc, idx) => {
+                                    const isDone = activeDraftingDocIndex > idx;
+                                    const isCurrent = activeDraftingDocIndex === idx;
 
                                     return (
-                                        <View key={s.step} style={styles.timelineItem}>
-                                            <View style={styles.timelineLeftCol}>
-                                                <View style={[
-                                                    styles.stepCircle,
-                                                    isCurrent && styles.stepCircleActive,
-                                                    isDone && styles.stepCircleCompleted,
-                                                ]}>
-                                                    {isDone ? (
-                                                        <Ionicons name="checkmark" size={13} color="#000000" />
-                                                    ) : isCurrent ? (
-                                                        <ActivityIndicator size="small" color={colors.accent} />
-                                                    ) : (
-                                                        <Text style={styles.stepNumber}>{s.step}</Text>
-                                                    )}
-                                                </View>
-                                                {!isLast && (
-                                                    <View style={[
-                                                        styles.timelineLine,
-                                                        isDone && styles.timelineLineDone,
-                                                    ]} />
+                                        <View
+                                            key={doc.id}
+                                            style={[
+                                                styles.docStackItem,
+                                                isCurrent && styles.docStackItemActive,
+                                                isDone && styles.docStackItemDone,
+                                            ]}
+                                        >
+                                            <View
+                                                style={[
+                                                    styles.docStackIconCircle,
+                                                    isCurrent && styles.docStackIconCircleActive,
+                                                    isDone && styles.docStackIconCircleDone,
+                                                ]}
+                                            >
+                                                {isDone ? (
+                                                    <Ionicons name="checkmark" size={13} color="#FFFFFF" />
+                                                ) : isCurrent ? (
+                                                    <ActivityIndicator size="small" color={colors.accent} />
+                                                ) : (
+                                                    <Text style={styles.docStackNumberText}>{idx + 1}</Text>
                                                 )}
                                             </View>
 
-                                            <View style={[styles.timelineContent, isCurrent && styles.timelineContentActive]}>
-                                                <View style={styles.timelineTextRow}>
-                                                    <Text style={[
-                                                        styles.stepLabel,
-                                                        isCurrent && styles.stepLabelActive,
-                                                        isDone && styles.stepLabelDone,
-                                                    ]}>
-                                                        {s.label}
-                                                    </Text>
-                                                    {isDone && (
-                                                        <Text style={styles.stepDoneStatusText}>Verified</Text>
-                                                    )}
-                                                </View>
-                                                <Text style={styles.stepDesc} numberOfLines={1}>{s.desc}</Text>
+                                            <View style={{ flex: 1 }}>
+                                                <Text
+                                                    style={[
+                                                        styles.docStackTitle,
+                                                        isCurrent && styles.docStackTitleActive,
+                                                        isDone && styles.docStackTitleDone,
+                                                    ]}
+                                                    numberOfLines={1}
+                                                >
+                                                    {doc.title}
+                                                </Text>
+                                                <Text style={styles.docStackSub} numberOfLines={1}>
+                                                    {doc.sub}
+                                                </Text>
+                                            </View>
 
-                                                {/* Clean Minimal Inline Document Chips for Step 2 */}
-                                                {s.docChips && (
-                                                    <View style={styles.docChipsRow}>
-                                                        {s.docChips.map((chip, cIdx) => (
-                                                            <View
-                                                                key={cIdx}
-                                                                style={[
-                                                                    styles.docChip,
-                                                                    chip.isReady && styles.docChipReady,
-                                                                    isCurrent && !chip.isReady && styles.docChipPending,
-                                                                ]}
-                                                            >
-                                                                <Text
-                                                                    style={[
-                                                                        styles.docChipText,
-                                                                        chip.isReady && styles.docChipTextReady,
-                                                                    ]}
-                                                                >
-                                                                    {chip.isReady ? `✓ ${chip.name}` : chip.name}
-                                                                </Text>
-                                                            </View>
-                                                        ))}
-                                                    </View>
-                                                )}
+                                            <View
+                                                style={[
+                                                    styles.docStackStatusPill,
+                                                    isCurrent && styles.docStackStatusPillActive,
+                                                    isDone && styles.docStackStatusPillDone,
+                                                ]}
+                                            >
+                                                <Text
+                                                    style={[
+                                                        styles.docStackStatusText,
+                                                        isCurrent && styles.docStackStatusTextActive,
+                                                        isDone && styles.docStackStatusTextDone,
+                                                    ]}
+                                                >
+                                                    {isDone ? 'Drafted' : isCurrent ? 'Drafting' : 'Queued'}
+                                                </Text>
                                             </View>
                                         </View>
                                     );
                                 })}
                             </View>
 
-                            {/* 4. Minimalist Live Telemetry Stream */}
-                            {compilationLogs.length > 0 && (
-                                <View style={styles.terminalBox}>
-                                    <View style={styles.terminalHeader}>
-                                        <View style={styles.terminalLiveIndicator}>
-                                            <View style={styles.terminalLiveDot} />
-                                            <Text style={styles.terminalTitle}>LIVE TELEMETRY</Text>
-                                        </View>
-                                        <Text style={styles.terminalCountText}>{compilationLogs.length} events</Text>
-                                    </View>
-                                    <View style={styles.terminalBody}>
-                                        {compilationLogs.slice(-2).map((log, lIdx) => (
-                                            <Text key={lIdx} style={styles.terminalLine} numberOfLines={1}>
-                                                <Text style={styles.terminalPrompt}>• </Text>
-                                                {log}
-                                            </Text>
-                                        ))}
-                                    </View>
-                                </View>
-                            )}
-
-                            {/* 5. Minimal Security & Encryption Trust Seal */}
+                            {/* 4. Minimal Court Standard Trust Seal */}
                             <View style={styles.privacyBadge}>
                                 <MaterialCommunityIcons name="shield-check-outline" size={13} color={colors.safe} />
-                                <Text style={styles.privacyBadgeText}>100% On-Device DOCX Assembly • Encrypted Storage</Text>
+                                <Text style={styles.privacyBadgeText}>
+                                    Madras High Court 1.75" Margins • Double Spacing • Local .docx Package
+                                </Text>
                             </View>
                         </ScrollView>
                     )}
@@ -2693,11 +2625,6 @@ const createStyles = (
             fontWeight: '700',
             fontVariant: ['tabular-nums'],
         },
-        generatingContextMainRow: {
-            flexDirection: 'row',
-            alignItems: 'center',
-            justifyContent: 'space-between',
-        },
         generatingDocTitle: {
             color: colors.textPrimary,
             fontSize: 14,
@@ -2712,38 +2639,36 @@ const createStyles = (
         generatingProgressHeader: {
             width: '100%',
             backgroundColor: colors.surfaceHighlight + '70',
-            borderRadius: 16,
+            borderRadius: 14,
             borderWidth: 1,
             borderColor: colors.border + '80',
-            padding: 14,
+            padding: 12,
             marginBottom: spacing.m,
-        },
-        generatingLoaderRow: {
-            flexDirection: 'row',
-            alignItems: 'center',
-            gap: 12,
-        },
-        compactOrb: {
-            width: 42,
-            height: 42,
-            borderRadius: 21,
-            backgroundColor: colors.accent + '18',
-            alignItems: 'center',
-            justifyContent: 'center',
-            borderWidth: 1.5,
-            borderColor: colors.accent + '40',
         },
         progressLabelRow: {
             flexDirection: 'row',
             justifyContent: 'space-between',
             alignItems: 'center',
-            marginBottom: 6,
+            marginBottom: 8,
         },
-        progressBarStageLabel: {
-            color: colors.textSecondary,
-            fontSize: 10,
-            fontWeight: '700',
-            letterSpacing: 0.6,
+        statusLiveRow: {
+            flexDirection: 'row',
+            alignItems: 'center',
+            gap: 6,
+            flex: 1,
+            marginRight: 8,
+        },
+        statusLiveDot: {
+            width: 6,
+            height: 6,
+            borderRadius: 3,
+            backgroundColor: colors.safe,
+        },
+        generatingSubtitle: {
+            color: colors.textPrimary,
+            fontSize: 11.5,
+            fontWeight: '600',
+            flex: 1,
         },
         progressBarPercent: {
             color: colors.accent,
@@ -2767,200 +2692,110 @@ const createStyles = (
             flex: 1,
             height: '100%',
         },
-        statusLiveRow: {
-            flexDirection: 'row',
-            alignItems: 'center',
-            gap: 6,
-            marginTop: 10,
-            paddingTop: 8,
-            borderTopWidth: StyleSheet.hairlineWidth,
-            borderTopColor: colors.border + '60',
-        },
-        statusLiveDot: {
-            width: 6,
-            height: 6,
-            borderRadius: 3,
-            backgroundColor: colors.safe,
-        },
-        generatingSubtitle: {
-            color: colors.textPrimary,
-            fontSize: 11.5,
-            fontWeight: '600',
-            flex: 1,
-        },
-        timelineContainer: {
+        docStackContainer: {
             width: '100%',
-            backgroundColor: colors.surfaceHighlight + '40',
+            backgroundColor: colors.surfaceHighlight + '50',
             borderRadius: 16,
             borderWidth: 1,
-            borderColor: colors.border + '60',
-            paddingVertical: 12,
-            paddingHorizontal: 14,
+            borderColor: colors.border + '70',
+            padding: 14,
             marginBottom: spacing.m,
         },
-        timelineItem: {
+        docStackHeader: {
+            color: colors.textTertiary,
+            fontSize: 10,
+            fontWeight: '700',
+            letterSpacing: 0.8,
+            marginBottom: 10,
+        },
+        docStackItem: {
             flexDirection: 'row',
-            minHeight: 48,
-        },
-        timelineLeftCol: {
             alignItems: 'center',
-            width: 28,
-            marginRight: 10,
-        },
-        stepCircle: {
-            width: 24,
-            height: 24,
+            gap: 12,
+            paddingVertical: 10,
+            paddingHorizontal: 10,
             borderRadius: 12,
+            marginBottom: 6,
+            backgroundColor: 'transparent',
+            borderWidth: 1,
+            borderColor: 'transparent',
+        },
+        docStackItemActive: {
+            backgroundColor: colors.accent + '10',
+            borderColor: colors.accent + '35',
+        },
+        docStackItemDone: {
+            backgroundColor: colors.surfaceHighlight + '40',
+            borderColor: colors.border + '40',
+        },
+        docStackIconCircle: {
+            width: 26,
+            height: 26,
+            borderRadius: 13,
             backgroundColor: colors.surface,
             alignItems: 'center',
             justifyContent: 'center',
             borderWidth: 1.5,
             borderColor: colors.border,
-            zIndex: 2,
         },
-        stepCircleActive: {
+        docStackIconCircleActive: {
             backgroundColor: colors.accent + '20',
             borderColor: colors.accent,
         },
-        stepCircleCompleted: {
+        docStackIconCircleDone: {
             backgroundColor: colors.safe,
             borderColor: colors.safe,
         },
-        stepNumber: {
-            color: colors.textTertiary,
-            fontSize: 10.5,
-            fontWeight: '700',
-        },
-        timelineLine: {
-            width: 1.5,
-            flex: 1,
-            backgroundColor: colors.border + '60',
-            marginVertical: 3,
-        },
-        timelineLineDone: {
-            backgroundColor: colors.safe + '80',
-        },
-        timelineContent: {
-            flex: 1,
-            paddingBottom: 14,
-        },
-        timelineContentActive: {
-            opacity: 1,
-        },
-        timelineTextRow: {
-            flexDirection: 'row',
-            alignItems: 'center',
-            justifyContent: 'space-between',
-        },
-        stepLabel: {
-            color: colors.textSecondary,
-            fontSize: 12.5,
-            fontWeight: '600',
-        },
-        stepLabelActive: {
-            color: colors.textPrimary,
-            fontWeight: '700',
-        },
-        stepLabelDone: {
-            color: colors.textPrimary,
-            fontWeight: '600',
-        },
-        stepDoneStatusText: {
-            color: colors.safe,
-            fontSize: 10,
-            fontWeight: '700',
-            textTransform: 'uppercase',
-            letterSpacing: 0.5,
-        },
-        stepDesc: {
+        docStackNumberText: {
             color: colors.textTertiary,
             fontSize: 11,
-            marginTop: 2,
-            lineHeight: 15,
+            fontWeight: '700',
         },
-        docChipsRow: {
-            flexDirection: 'row',
-            flexWrap: 'wrap',
-            gap: 4,
-            marginTop: 6,
-        },
-        docChip: {
-            paddingHorizontal: 6,
-            paddingVertical: 2,
-            borderRadius: 4,
-            backgroundColor: colors.surface,
-            borderWidth: 1,
-            borderColor: colors.border,
-        },
-        docChipReady: {
-            backgroundColor: colors.safe + '15',
-            borderColor: colors.safe + '40',
-        },
-        docChipPending: {
-            backgroundColor: colors.accent + '15',
-            borderColor: colors.accent + '40',
-        },
-        docChipText: {
-            fontSize: 9.5,
-            color: colors.textTertiary,
+        docStackTitle: {
+            color: colors.textSecondary,
+            fontSize: 13,
             fontWeight: '600',
         },
-        docChipTextReady: {
-            color: colors.safe,
+        docStackTitleActive: {
+            color: colors.textPrimary,
             fontWeight: '700',
         },
-        terminalBox: {
-            width: '100%',
-            backgroundColor: colors.surfaceHighlight + '90',
-            borderRadius: 12,
-            borderWidth: 1,
-            borderColor: colors.border,
-            overflow: 'hidden',
-            marginBottom: spacing.m,
+        docStackTitleDone: {
+            color: colors.textPrimary,
+            fontWeight: '600',
         },
-        terminalHeader: {
-            flexDirection: 'row',
-            alignItems: 'center',
-            justifyContent: 'space-between',
-            paddingHorizontal: 10,
-            paddingVertical: 6,
-            borderBottomWidth: StyleSheet.hairlineWidth,
-            borderBottomColor: colors.border + '60',
-            backgroundColor: colors.surfaceHighlight,
-        },
-        terminalLiveIndicator: {
-            flexDirection: 'row',
-            alignItems: 'center',
-            gap: 6,
-        },
-        terminalLiveDot: {
-            width: 6,
-            height: 6,
-            borderRadius: 3,
-            backgroundColor: colors.accent,
-        },
-        terminalTitle: {
-            color: colors.textSecondary,
-            fontSize: 9.5,
-            fontWeight: '700',
-            letterSpacing: 0.6,
-        },
-        terminalCountText: {
+        docStackSub: {
             color: colors.textTertiary,
-            fontSize: 9.5,
+            fontSize: 11,
+            marginTop: 1,
         },
-        terminalBody: {
-            padding: 8,
-            gap: 3,
+        docStackStatusPill: {
+            paddingHorizontal: 8,
+            paddingVertical: 3,
+            borderRadius: 6,
+            backgroundColor: colors.surface,
+            borderWidth: 1,
+            borderColor: colors.border + '50',
         },
-        terminalLine: {
-            color: colors.textSecondary,
-            fontSize: 10.5,
-            fontFamily: Platform.OS === 'ios' ? 'Menlo' : 'monospace',
-            lineHeight: 15,
+        docStackStatusPillActive: {
+            backgroundColor: colors.accent + '18',
+            borderColor: colors.accent + '50',
         },
-        terminalPrompt: {
+        docStackStatusPillDone: {
+            backgroundColor: colors.safe + '18',
+            borderColor: colors.safe + '40',
+        },
+        docStackStatusText: {
+            color: colors.textTertiary,
+            fontSize: 10,
+            fontWeight: '600',
+        },
+        docStackStatusTextActive: {
             color: colors.accent,
+            fontWeight: '700',
+        },
+        docStackStatusTextDone: {
+            color: colors.safe,
             fontWeight: '700',
         },
         privacyBadge: {

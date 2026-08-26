@@ -240,19 +240,30 @@ const createCourtFormattedElements = (
             line.startsWith('IN THE HIGH COURT') ||
             line.startsWith('Crl.M.P.') ||
             line.startsWith('Crl.O.P.') ||
+            line.startsWith('CRL.O.P.') ||
+            line.startsWith('C.R.P.') ||
+            line.startsWith('CRP') ||
             line.startsWith('W.P.') ||
             line.startsWith('O.S.') ||
+            line.startsWith('I.A.') ||
+            line.startsWith('(CIVIL') ||
+            line.startsWith('(CRIMINAL') ||
+            line.startsWith('(SPECIAL') ||
+            line.startsWith('(APPELLATE') ||
+            line.startsWith('(WRIT') ||
             line.startsWith('PETITION UNDER') ||
             line.startsWith('MEMORANDUM OF') ||
+            line.startsWith('PLAINT FILED UNDER') ||
             line.startsWith('SYNOPSIS') ||
             line.startsWith('SUPPORTING VERIFICATION') ||
             line.startsWith('VAKALATNAMA') ||
-            line.startsWith('VERIFICATION.') ||
+            line.startsWith('VERIFICATION') ||
             line.startsWith('LEGAL NOTICE') ||
             line.startsWith('STATUTORY NOTICE') ||
             line.startsWith('REPLY TO LEGAL NOTICE') ||
             line.startsWith('SCHEDULE OF PROPERTY') ||
             line.startsWith('SCHEDULE PROPERTY') ||
+            line.startsWith('DOCKET / BACKSHEET') ||
             line.startsWith('JEWELS GIVEN FOR WEDDING.');
 
         if (isCenteredHeading) {
@@ -272,7 +283,9 @@ const createCourtFormattedElements = (
                                 line.startsWith('LEGAL NOTICE') ||
                                 line.startsWith('STATUTORY NOTICE') ||
                                 line.startsWith('SCHEDULE') ||
-                                line.startsWith('JEWELS')
+                                line.startsWith('JEWELS') ||
+                                line.startsWith('MEMORANDUM OF') ||
+                                line.startsWith('PLAINT FILED')
                                     ? {}
                                     : undefined,
                         }),
@@ -300,7 +313,9 @@ const createCourtFormattedElements = (
             line.startsWith('JEWELLERY / STRIDHAN') ||
             line.startsWith('FAILURE TO TAKE EFFECTIVE POLICE ACTION') ||
             line.startsWith('GROUNDS FOR') ||
-            line.startsWith('GROUNDS:');
+            line.startsWith('GROUNDS:') ||
+            line.startsWith('LEGAL GROUNDS & SUBMISSIONS:') ||
+            line.startsWith('SPECIFIC CASE FACTS & GROUNDS:');
 
         if (isLeftSubHeading) {
             elements.push(
