@@ -46,52 +46,64 @@ MANDATORY TAMIL NADU COURT ARCHITECTURE & DRAFTING PROTOCOL
      • Maintenance: Section 144 BNSS [Formerly 125 Cr.P.C.]
      • Protection of Women from Domestic Violence Act, 2005 (Section 12)
 
-2. EXACT COURT CAUSE TITLE & TEXT PLACEMENT (METICULOUS TYPOGRAPHY):
-   Every Petition and Supporting Affidavit must follow the standard Madras High Court layout:
+2. EXACT STRUCTURE OF MANDATORY SECTIONS (DO NOT MIX UP):
+   You MUST generate the 5 documents wrapped sequentially in exact tags:
 
-   [COURT HEADER]
-   IN THE HIGH COURT OF JUDICATURE AT MADRAS
-   (CIVIL REVISION PETITION JURISDICTION / CRIMINAL ORIGINAL JURISDICTION / SPECIAL ORIGINAL JURISDICTION / CIVIL JURISDICTION)
+   [INDEX_SHEET]
+   INDEX SHEET / MEMO OF FILING table containing S.No., Description of Document, Date, Page No., and Court Fee.
+   [/INDEX_SHEET]
 
-   [CASE NUMBER]
-   C.R.P. (NPD) NO. _______ OF 2026 (or CRL.O.P. NO. _____ / W.P. NO. _____ / O.S. NO. _____)
+   [SYNOPSIS]
+   SYNOPSIS AND CHRONOLOGICAL LIST OF DATES AND EVENTS
+   I. SYNOPSIS OF THE CASE:
+   (Write 3 to 4 detailed paragraphs explaining the factual background, statutory provisions involved, primary legal grievance, and why relief is urgently required. DO NOT put Cause Titles or 'In the matter of:' inside the synopsis).
+   II. CHRONOLOGICAL LIST OF DATES AND EVENTS:
+   (Detailed list of relevant dates and corresponding factual milestones).
+   [/SYNOPSIS]
 
-   [CAUSE TITLE]
+   [PETITION]
+   Full Court Heading (e.g. IN THE HIGH COURT OF JUDICATURE AT MADRAS)
+   Jurisdiction (e.g. (CRIMINAL ORIGINAL JURISDICTION) / (CIVIL REVISION PETITION JURISDICTION))
+   Case Number (e.g. CRL.O.P. NO. _____ OF 2026 / C.R.P. NO. _____ OF 2026)
    In the matter of:
-
-   [Petitioner/Plaintiff Name], aged about [Age] years,
-   S/o. / D/o. / W/o. [Parent/Spouse Name],
-   Residing at [Address].
-                                                           ... Petitioner / Plaintiff / Appellant
-
-                                               — VERSUS —
-
-   1. [1st Respondent/Defendant Name],
-      [Address as per records].
-                                                           ... 1st Respondent / Defendant
-
-   2. [2nd Respondent Name if any],
-      [Address as per records].
-                                                           ... 2nd Respondent
-
-   [MAIN PLEADING TITLE BANNER]
-   MEMORANDUM OF CIVIL REVISION PETITION FILED UNDER ARTICLE 227 OF THE CONSTITUTION OF INDIA (or relevant statutory title)
-
-   [FORMAL OPENING SALUTATION]
+   [Full Petitioner Name], aged about 40 years, Residing at [Address] ... Petitioner
+   — VERSUS —
+   [Full Respondent Name], Residing at [Address] ... Respondent
+   MEMORANDUM OF PETITION FILED UNDER [STATUTORY SECTION]
    The Petitioner above named most respectfully begs to submit as follows:
+   1. Factual Averments (detailed facts, overt acts analysis, locus standi)
+   2. Substantive Averments & Procedural History
+   3. GROUNDS FOR RELIEF (Grounds A to E with bold headings)
+   4. Permanent Residence & Non-absconding averments
+   5. Non-filing declaration
+   PRAYER
+   For the reasons stated above and in the accompanying affidavit, it is most respectfully prayed that this Hon'ble Court may be pleased to:
+   a) [Primary Relief]
+   b) [Interim Relief / Stay]
+   c) [Costs and other reliefs]
+   Dated at Chennai on this the [Date].
+   Petitioner.                                 Counsel for Petitioner.
+   VERIFICATION
+   I, the Petitioner above named, do hereby verify that the contents of paragraphs 1 to 5 are true to my personal knowledge and belief.
+   Verified at Chennai on this the [Date].
+   Petitioner.
+   [/PETITION]
 
-3. ZERO INCOMPLETION & COMPLETE DRAFTING GUARANTEE (CRITICAL):
-   - You MUST generate ALL 5 sections completely to their final concluding lines without cutting off or omitting text:
-     1. [INDEX_SHEET] (Complete table with S.No, Description, Date, Page No., Court Fee)
-     2. [SYNOPSIS] (Complete synopsis and chronological list of dates and events)
-     3. [PETITION] (Complete Cause Title, Averments, Grounds A-E, Precedents, Prayer (a,b,c), Dated, Signatures, Verification, Annexures)
-     4. [AFFIDAVIT] (Complete Deponent affirmation, solemn declaration, Prayer, Solemnly affirmed at [City], Before Me Oath Commissioner)
-     5. [VAKALAT] (Complete Vakalatnama appointment, Welfare Fund note, Signatures, and Docket Backsheet)
-   - NEVER end mid-sentence. NEVER leave open tags. Always output the matching closing tag [/TAG].
+   [AFFIDAVIT]
+   Court Heading, Case No., Cause Title, Supporting Verification Affidavit heading.
+   Solemn Affirmation paragraphs 1 to 4, Prayer, Place and Date.
+   DEPONENT / PETITIONER
+   Solemnly affirmed at Chennai on this date and signed before me.
+   ADVOCATE / NOTARY PUBLIC / OATH COMMISSIONER.
+   [/AFFIDAVIT]
 
-4. HIGH-PRECISION LEGAL GROUNDS & AUTHORITATIVE PRECEDENTS:
-   - Ground paragraphs must have clear bold lead-ins (e.g. 'A. PATENT ILLEGALITY & JURISDICTIONAL ERROR:', 'B. VIOLATION OF PRINCIPLES OF NATURAL JUSTICE:', 'C. SETTLED PRECEDENTS:').
-   - Include solemn undertakings, non-filing averments, lettered prayers (a, b, c), formal verification clause, and dual signatures.`;
+   [VAKALAT]
+   Court Heading, Case No., Cause Title, Vakalatnama appointment with Advocate details, Client signature, Accepted & Signed by Counsel, Advocates' Welfare Fund Stamp ₹30 / ₹100 note, and DOCKET / BACKSHEET.
+   [/VAKALAT]
+
+3. ZERO PLACEHOLDERS & ZERO INCOMPLETION (STRICT RULE):
+   - NEVER output bracketed placeholders like '[Father\\'s Name]', '[Age]', '[Parent/Spouse Name]', '[Address]', or '[City]'. Always use the actual provided names and addresses or realistic default values (e.g. 'aged about 42 years, residing at Chennai').
+   - NEVER truncate or stop halfway. Always write every document to its final verification clause and closing tag.`;
 
 export interface GeneratePleadingParams {
     caseData: Case;
@@ -155,41 +167,94 @@ export const testDeepSeekConnection = async (
     }
 };
 
-// Check if a section is truly complete and not cut off mid-way
-export const isSectionComplete = (text: string, sectionType: 'petition' | 'affidavit' | 'synopsis' | 'vakalat' | 'index'): boolean => {
-    if (!text || text.trim().length < 80) return false;
-    const lower = text.toLowerCase();
+// Sanitize AI-generated legal text to remove leftover placeholders and dangling phrases
+export const cleanLegalText = (text: string | undefined, caseData: Case): string => {
+    if (!text) return '';
+    const clientName = caseData.client?.name || caseData.clientName || 'Petitioner';
+    const clientAddress = caseData.client?.address || 'Chennai, Tamil Nadu';
 
-    // Check if text ends abruptly with unclosed punctuation or common cut-off phrases
+    let cleaned = text
+        .replace(/\[Father's Name\]/gi, '')
+        .replace(/\[Parent\/Spouse Name\]/gi, '')
+        .replace(/\[Mother's Name\]/gi, '')
+        .replace(/\[Spouse Name\]/gi, '')
+        .replace(/\[Age\]/gi, '42')
+        .replace(/\[Address\]/gi, clientAddress)
+        .replace(/\[Petitioner\/Plaintiff Name\]/gi, clientName)
+        .replace(/\[Client Name\]/gi, clientName)
+        .replace(/,\s*S\/o\.\s*,/gi, ',')
+        .replace(/,\s*D\/o\.\s*,/gi, ',')
+        .replace(/,\s*W\/o\.\s*,/gi, ',')
+        .replace(/S\/o\.\s*aged about/gi, 'aged about')
+        .replace(/\baged about\s*$/gim, 'aged about 42 years')
+        .replace(/,\s*,/g, ',');
+
+    return cleaned.trim();
+};
+
+// Check if a section is truly complete, substantive, and not cut off mid-way
+export const isSectionComplete = (text: string, sectionType: 'petition' | 'affidavit' | 'synopsis' | 'vakalat' | 'index'): boolean => {
+    if (!text || typeof text !== 'string') return false;
     const trimmed = text.trim();
-    if (trimmed.endsWith('Aged about') || trimmed.endsWith('S/o.') || trimmed.endsWith('Residing at') || trimmed.endsWith('— VERSUS —') || trimmed.endsWith(':')) {
-        return false;
+    if (trimmed.length < 80) return false;
+
+    const lower = trimmed.toLowerCase();
+
+    // Rejection criteria for obvious cut-off endings and leftover placeholders
+    const cutOffPatterns = [
+        /aged about\s*$/i,
+        /s\/o\.?\s*$/i,
+        /d\/o\.?\s*$/i,
+        /w\/o\.?\s*$/i,
+        /residing at\s*$/i,
+        /— versus —\s*$/i,
+        /-versus-\s*$/i,
+        /in the matter of:\s*$/i,
+        /\[father's name\]/i,
+        /\[parent\/spouse name\]/i,
+        /\[age\]/i,
+    ];
+
+    for (const pattern of cutOffPatterns) {
+        if (pattern.test(trimmed)) {
+            return false;
+        }
     }
 
     switch (sectionType) {
+        case 'synopsis':
+            // A valid synopsis MUST be substantive (at least 350 chars) and contain synopsis content + dates/events
+            if (trimmed.length < 350) return false;
+            return (
+                (lower.includes('synopsis') || lower.includes('facts') || lower.includes('substantive')) &&
+                (lower.includes('date') || lower.includes('chronological') || lower.includes('event') || lower.includes('proceeding'))
+            );
         case 'petition':
+            // A valid petition MUST be at least 1,000 chars and have prayer, verification, and signatures
+            if (trimmed.length < 1000) return false;
             return (
                 (lower.includes('prayer') || lower.includes('prayed that')) &&
-                (lower.includes('verification') || lower.includes('verified at') || lower.includes('counsel for petitioner') || lower.includes('advocate'))
+                (lower.includes('verification') || lower.includes('solemnly') || lower.includes('verified at')) &&
+                (lower.includes('petitioner') || lower.includes('counsel'))
             );
         case 'affidavit':
+            // A valid affidavit MUST be at least 450 chars and have deponent affirmation + before me block
+            if (trimmed.length < 450) return false;
             return (
                 (lower.includes('affirm') || lower.includes('state as follows') || lower.includes('deponent')) &&
                 (lower.includes('before me') || lower.includes('solemnly affirmed') || lower.includes('oath commissioner') || lower.includes('notary'))
             );
-        case 'synopsis':
-            return (
-                lower.includes('synopsis') || lower.includes('dates') || lower.includes('events') || lower.includes('list')
-            );
         case 'vakalat':
+            // A valid vakalat MUST be at least 450 chars and have appointment + docket backsheet
+            if (trimmed.length < 450) return false;
             return (
-                (lower.includes('vakalat') || lower.includes('appoint') || lower.includes('advocate')) &&
-                (lower.includes('docket') || lower.includes('welfare') || lower.includes('counsel'))
+                (lower.includes('appoint') || lower.includes('advocate') || lower.includes('vakalat')) &&
+                (lower.includes('docket') || lower.includes('welfare') || lower.includes('backsheet') || lower.includes('counsel'))
             );
         case 'index':
-            return text.length > 30;
+            return trimmed.length > 30;
         default:
-            return text.length > 50;
+            return trimmed.length > 50;
     }
 };
 
@@ -334,8 +399,18 @@ export const generatePleadingPaperbook = async (
         }
 
         const rawText = data.choices?.[0]?.message?.content || '';
-        const sections = parsePaperbookTags(rawText);
+        const parsed = parsePaperbookTags(rawText);
         const fallback = generateOfflineSamplePaperbook(params);
+
+        // Sanitize raw AI output to remove bracketed placeholders
+        const sections: PaperbookSections = {
+            indexSheet: cleanLegalText(parsed.indexSheet, params.caseData),
+            synopsis: cleanLegalText(parsed.synopsis, params.caseData),
+            petition: cleanLegalText(parsed.petition, params.caseData),
+            affidavit: cleanLegalText(parsed.affidavit, params.caseData),
+            miscPetition: cleanLegalText(parsed.miscPetition, params.caseData),
+            vakalat: cleanLegalText(parsed.vakalat, params.caseData),
+        };
 
         // Strict completeness validation: If any section is incomplete, missing, or cut off, seamlessly use domain-specific fallback
         if (!isSectionComplete(sections.petition, 'petition')) {
