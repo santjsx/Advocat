@@ -108,18 +108,23 @@ export function selectBestApkAsset(assets: GitHubAsset[]): GitHubAsset | null {
 export async function checkForAppUpdate(
   owner: string = DEFAULT_GITHUB_OWNER,
   repo: string = DEFAULT_GITHUB_REPO,
-  currentVersion: string = '2.0.0'
+  currentVersion: string = '2.0.0',
+  authToken?: string
 ): Promise<UpdateCheckResult> {
   const url = `https://api.github.com/repos/${owner}/${repo}/releases/latest`;
 
+  const headers: Record<string, string> = {
+    Accept: 'application/vnd.github.v3+json',
+    'User-Agent': 'Advocat-Updater',
+  };
+
+  if (authToken) {
+    headers.Authorization = `Bearer ${authToken}`;
+  }
+
   let response: Response;
   try {
-    response = await fetch(url, {
-      headers: {
-        Accept: 'application/vnd.github.v3+json',
-        'User-Agent': 'Advocat-Updater',
-      },
-    });
+    response = await fetch(url, { headers });
   } catch (netErr: any) {
     throw new Error('Network error: Unable to reach GitHub. Please check your connection.');
   }
