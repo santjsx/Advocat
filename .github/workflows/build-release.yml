@@ -43,8 +43,8 @@ jobs:
           distribution: 'temurin'
           java-version: '21'
 
-      - name: 4. Set up Android SDK
-        uses: android-actions/setup-android@v3
+      - name: 4. Accept Android SDK Licenses
+        run: yes | sdkmanager --licenses || true
 
       - name: 5. Set up Gradle Cache
         uses: gradle/actions/setup-gradle@v4
