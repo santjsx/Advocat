@@ -22,6 +22,7 @@ import { Ionicons } from '@expo/vector-icons';
 import { exportFullBackup, importFullBackup, estimateBackupSize, formatBackupSize } from '../services/backupService';
 import * as Haptics from 'expo-haptics';
 import { LinearGradient } from 'expo-linear-gradient';
+import { useUpdateStore } from '../store/useUpdateStore';
 import { AdvocateProfile, COURT_TIERS, CourtTier, DEFAULT_ADVOCATE_PROFILE } from '../models/Pleading';
 import { testDeepSeekConnection } from '../services/aiPleadingService';
 import {
@@ -87,6 +88,11 @@ export const SettingsScreen: React.FC<Props> = ({ navigation }) => {
     const [selectedModel, setSelectedModel] = useState<'deepseek-chat' | 'deepseek-reasoner'>(advocateProfile.selectedModel || 'deepseek-chat');
     const [isSyncingTelemetry, setIsSyncingTelemetry] = useState(false);
 
+    // In-App Self Updater (Centralized Store)
+    const checkForUpdates = useUpdateStore(state => state.checkForUpdates);
+    const updateStatus = useUpdateStore(state => state.status);
+    const isCheckingUpdate = updateStatus === 'CHECKING';
+
     const unreadCount = notificationHistory.filter(n => !n.read).length;
 
     // Modern Animated Toast Notification
@@ -131,6 +137,18 @@ export const SettingsScreen: React.FC<Props> = ({ navigation }) => {
                 setToastMessage(null);
             });
         }, 2200);
+    };
+
+    const handleManualUpdateCheck = async () => {
+        Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
+        showToast('Checking GitHub for updates...', 'info');
+        const result = await checkForUpdates(true);
+        if (result && !result.isUpdateAvailable) {
+            showToast(`Advocat is up to date (v${result.currentVersion}).`, 'success');
+        } else if (!result && useUpdateStore.getState().status === 'ERROR') {
+            const error = useUpdateStore.getState().errorMessage;
+            showToast(error || 'Unable to reach GitHub.', 'error');
+        }
     };
 
     // Futuristic glow animation for dev credits
@@ -1252,6 +1270,32 @@ This will REPLACE your current data. Are you sure?`,
                                 <View style={styles.versionDot} />
                                 <Text style={styles.editionText}>Chamber OS</Text>
                             </View>
+
+                            <TouchableOpacity
+                                activeOpacity={0.7}
+                                onPress={handleManualUpdateCheck}
+                                style={{
+                                    flexDirection: 'row',
+                                    alignItems: 'center',
+                                    gap: 5,
+                                    marginTop: 6,
+                                    paddingHorizontal: 10,
+                                    paddingVertical: 3.5,
+                                    borderRadius: 6,
+                                    backgroundColor: colors.surfaceHighlight,
+                                    borderWidth: 1,
+                                    borderColor: colors.border,
+                                }}
+                            >
+                                {isCheckingUpdate ? (
+                                    <ActivityIndicator size="small" color={colors.accent} style={{ transform: [{ scale: 0.7 }] }} />
+                                ) : (
+                                    <Ionicons name="cloud-download-outline" size={12} color={colors.accent} />
+                                )}
+                                <Text style={{ fontSize: 11, fontWeight: '600', color: colors.accent }}>
+                                    {isCheckingUpdate ? 'Checking GitHub...' : 'Check for Updates'}
+                                </Text>
+                            </TouchableOpacity>
                             <Text style={styles.appTagline}>
                                 Legal Practice OS & Judicial Intelligence • India 🇮🇳
                             </Text>

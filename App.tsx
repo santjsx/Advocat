@@ -11,10 +11,15 @@ import { ToastProvider } from './src/context/ToastContext';
 import { ErrorBoundary } from './src/components/ErrorBoundary';
 
 import { useTheme } from './src/theme/ThemeContext';
+import { useAppUpdate } from './src/hooks/useAppUpdate';
+import { UpdateModal } from './src/components/UpdateModal';
 
 function AppContent() {
   const [isReady, setIsReady] = useState(false);
   const { colors, mode } = useTheme();
+
+  // Automatically check for GitHub releases on launch (with 30m rate-limit safeguard)
+  useAppUpdate({ autoCheckOnMount: true });
 
   useEffect(() => {
     const init = async () => {
@@ -36,6 +41,7 @@ function AppContent() {
     <View style={{ flex: 1, backgroundColor: colors.background }}>
       <StatusBar style={mode === 'dark' ? 'light' : 'dark'} backgroundColor={colors.surface} />
       <RootNavigator />
+      <UpdateModal />
     </View>
   );
 }
